@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -27,7 +28,7 @@ export class ManagementController {
 
   @Post('users')
   @UseGuards(CsrfGuard)
-  createUser(@Body() body: { email: string; name: string; password: string; roleIds?: string[] }) {
+  createUser(@Body() body: { email: string; name: string; password?: string; roleIds?: string[] }) {
     return this.management.createUser(body);
   }
 
@@ -64,8 +65,32 @@ export class ManagementController {
 
   @Post('teams/:teamId/members/:userId')
   @UseGuards(CsrfGuard)
-  addTeamMember(@Param('teamId') teamId: string, @Param('userId') userId: string) {
-    return this.management.addTeamMember(teamId, userId);
+  addTeamMember(
+    @Param('teamId') teamId: string,
+    @Param('userId') userId: string,
+    @Body() body: { isLead?: boolean },
+  ) {
+    return this.management.addTeamMember(teamId, userId, body.isLead ?? false);
+  }
+
+  @Delete('teams/:teamId/members/:userId')
+  @UseGuards(CsrfGuard)
+  removeTeamMember(
+    @Param('teamId') teamId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.management.removeTeamMember(teamId, userId, user);
+  }
+
+  @Patch('teams/:id')
+  @UseGuards(CsrfGuard)
+  updateTeam(
+    @Param('id') id: string,
+    @Body() body: { slug?: string; name?: string; description?: string; isDefault?: boolean },
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.management.updateTeam(id, body, user);
   }
 
   @Get('statuses')

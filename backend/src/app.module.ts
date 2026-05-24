@@ -18,6 +18,7 @@ import { PublicModule } from './public/public.module';
 import { ExtrasModule } from './extras/extras.module';
 import { AuditModule } from './audit/audit.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { LookupsModule } from './lookups/lookups.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
     ManagementModule,
     PublicModule,
     ExtrasModule,
+    LookupsModule,
   ],
 })
 export class AppModule {}

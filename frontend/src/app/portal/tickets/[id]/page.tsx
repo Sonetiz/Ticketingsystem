@@ -17,8 +17,10 @@ interface TicketDetail {
   isOnHold: boolean;
   holdReason: string | null;
   holdUntil: string | null;
+  holdNote: string | null;
   assignee: { id: string; name: string } | null;
   assignedTeam: { id: string; name: string } | null;
+  project: { id: string; name: string } | null;
   requester: { id: string; name: string; email: string } | null;
   messages: Array<{
     id: string;
@@ -36,6 +38,17 @@ export default function TicketDetailPage() {
   const [replyBody, setReplyBody] = useState('');
   const [replyKind, setReplyKind] = useState<'public_reply' | 'internal_note'>('public_reply');
   const [holdReason, setHoldReason] = useState('waiting_for_user_reply');
+  const [holdUntil, setHoldUntil] = useState('');
+  const [holdNote, setHoldNote] = useState('');
+
+  const defaultHoldUntil = (reason: string) => {
+    if (reason === 'waiting_for_user_reply') {
+      const d = new Date();
+      d.setDate(d.getDate() + 14);
+      return d.toISOString().slice(0, 16);
+    }
+    return '';
+  };
 
   const { data: ticket, isLoading } = useQuery({
     queryKey: ['ticket', id],
@@ -65,11 +78,30 @@ export default function TicketDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
   });
 
+  const { data: projects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api<Array<{ id: string; name: string }>>('/projects'),
+  });
+
   const holdMutation = useMutation({
     mutationFn: () =>
       api(`/tickets/${id}/hold`, {
         method: 'POST',
-        body: JSON.stringify({ holdReason }),
+        body: JSON.stringify({
+          holdReason,
+          holdNote: holdNote || undefined,
+          holdUntil: holdUntil ? new Date(holdUntil).toISOString() : undefined,
+        }),
+        headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+  });
+
+  const projectMutation = useMutation({
+    mutationFn: (projectId: string | null) =>
+      api(`/tickets/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ projectId: projectId || null }),
         headers: { 'X-CSRF-Token': getCsrfToken() || '' },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
@@ -197,6 +229,17 @@ export default function TicketDetailPage() {
           )}
           {ticket.assignee && <p className="text-sm">Assignee: {ticket.assignee.name}</p>}
           {ticket.assignedTeam && <p className="text-sm">Team: {ticket.assignedTeam.name}</p>}
+          <div>
+            <label className="text-xs text-muted-foreground">Project</label>
+            <select
+              value={ticket.project?.id || ''}
+              onChange={(e) => projectMutation.mutate(e.target.value || null)}
+              className="w-full mt-1 p-2 border border-border rounded-lg bg-background text-sm"
+            >
+              <option value="">No project</option>
+              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="bg-card rounded-xl border border-border p-4 space-y-3">
@@ -213,7 +256,11 @@ export default function TicketDetailPage() {
             <div className="space-y-2">
               <select
                 value={holdReason}
-                onChange={(e) => setHoldReason(e.target.value)}
+                onChange={(e) => {
+                  const reason = e.target.value;
+                  setHoldReason(reason);
+                  if (!holdUntil) setHoldUntil(defaultHoldUntil(reason));
+                }}
                 className="w-full p-2 border border-border rounded-lg bg-background text-sm"
               >
                 <option value="waiting_for_user_reply">Waiting for user reply</option>
@@ -222,6 +269,25 @@ export default function TicketDetailPage() {
                 <option value="waiting_for_approval">Waiting for approval</option>
                 <option value="waiting_for_delivery">Hardware/software delivery</option>
               </select>
+              <div>
+                <label className="text-xs text-muted-foreground">Auto-release after (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={holdUntil || defaultHoldUntil(holdReason)}
+                  onChange={(e) => setHoldUntil(e.target.value)}
+                  className="w-full mt-1 p-2 border border-border rounded-lg bg-background text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Ticket will return to the active queue when this time is reached, or when the user replies.</p>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Hold note (optional)</label>
+                <textarea
+                  value={holdNote}
+                  onChange={(e) => setHoldNote(e.target.value)}
+                  className="w-full mt-1 p-2 border border-border rounded-lg bg-background text-sm min-h-[60px]"
+                  placeholder="Reason details..."
+                />
+              </div>
               <button onClick={() => holdMutation.mutate()} className="px-3 py-1 bg-amber-600 text-white rounded text-sm">
                 Put on Hold
               </button>

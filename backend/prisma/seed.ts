@@ -371,6 +371,11 @@ async function main() {
     update: {},
   });
 
+  // Reset ticket number sequence after explicit-number inserts
+  await prisma.$executeRaw`
+    SELECT setval('"Ticket_number_seq"', (SELECT COALESCE(MAX(number), 1) FROM "Ticket"), true)
+  `;
+
   // Integration settings
   await prisma.integrationSetting.upsert({
     where: { connector: 'email' },

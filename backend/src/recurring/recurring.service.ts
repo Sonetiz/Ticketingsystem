@@ -119,4 +119,30 @@ export class RecurringService {
       data: { isActive },
     });
   }
+
+  async update(id: string, dto: Partial<CreateRecurringTaskDto>, actor: SessionUser) {
+    const updated = await this.prisma.recurringTaskTemplate.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.titleTemplate !== undefined && { titleTemplate: dto.titleTemplate }),
+        ...(dto.descriptionTemplate !== undefined && { descriptionTemplate: dto.descriptionTemplate }),
+        ...(dto.rrule !== undefined && { rrule: dto.rrule }),
+        ...(dto.assigneeId !== undefined && { assigneeId: dto.assigneeId }),
+        ...(dto.assignedTeamId !== undefined && { assignedTeamId: dto.assignedTeamId }),
+        ...(dto.priority !== undefined && { priority: dto.priority }),
+        ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
+        ...(dto.dueDateOffsetHours !== undefined && { dueDateOffsetHours: dto.dueDateOffsetHours }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'recurring_task',
+      entityId: id,
+      action: 'updated',
+      newValue: dto,
+    });
+    return updated;
+  }
 }

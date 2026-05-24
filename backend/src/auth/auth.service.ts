@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -14,6 +15,12 @@ import { SessionUser } from '@ticketsystem/shared';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
 const MAGIC_LINK_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
+export interface EntraClaims {
+  oid: string;
+  email: string;
+  name?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -22,6 +29,133 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
   ) {}
+
+  isSsoEnabled(): boolean {
+    return this.config.get('SSO_ENABLED') === 'true';
+  }
+
+  getAuthConfig() {
+    return { ssoEnabled: this.isSsoEnabled() };
+  }
+
+  getMicrosoftAuthUrl(returnTo: string): string {
+    const tenantId = this.config.get<string>('AZURE_AD_TENANT_ID');
+    const clientId = this.config.get<string>('AZURE_AD_CLIENT_ID');
+    const redirectUri = this.config.get<string>('AZURE_AD_REDIRECT_URI');
+    if (!tenantId || !clientId || !redirectUri) {
+      throw new BadRequestException('Microsoft SSO is not configured');
+    }
+    const state = Buffer.from(JSON.stringify({ returnTo, nonce: randomBytes(8).toString('hex') })).toString('base64url');
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      response_mode: 'query',
+      scope: 'openid profile email',
+      state,
+    });
+    return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
+  }
+
+  async handleMicrosoftCallback(code: string): Promise<{ user: SessionUser; csrfToken: string; returnTo: string }> {
+    const tenantId = this.config.get<string>('AZURE_AD_TENANT_ID');
+    const clientId = this.config.get<string>('AZURE_AD_CLIENT_ID');
+    const clientSecret = this.config.get<string>('AZURE_AD_CLIENT_SECRET');
+    const redirectUri = this.config.get<string>('AZURE_AD_REDIRECT_URI');
+    if (!tenantId || !clientId || !clientSecret || !redirectUri) {
+      throw new BadRequestException('Microsoft SSO is not configured');
+    }
+
+    const tokenRes = await fetch(
+      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+          scope: 'openid profile email',
+        }),
+      },
+    );
+
+    if (!tokenRes.ok) {
+      throw new UnauthorizedException('Failed to exchange authorization code');
+    }
+
+    const tokenData = (await tokenRes.json()) as { id_token?: string };
+    if (!tokenData.id_token) {
+      throw new UnauthorizedException('No ID token received');
+    }
+
+    const claims = this.decodeIdToken(tokenData.id_token);
+    const user = await this.loginViaEntra(claims);
+    return { user, csrfToken: '', returnTo: '/portal' };
+  }
+
+  decodeIdToken(idToken: string): EntraClaims {
+    const parts = idToken.split('.');
+    if (parts.length !== 3) throw new UnauthorizedException('Invalid ID token');
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, string>;
+    const oid = payload.oid || payload.sub;
+    const email = (payload.email || payload.preferred_username || payload.upn)?.toLowerCase();
+    if (!oid || !email) throw new UnauthorizedException('Missing required claims in ID token');
+    return { oid, email, name: payload.name };
+  }
+
+  async loginViaEntra(claims: EntraClaims): Promise<SessionUser> {
+    let user = await this.prisma.user.findFirst({
+      where: { entraOid: claims.oid, deletedAt: null },
+    });
+
+    if (!user) {
+      user = await this.prisma.user.findFirst({
+        where: { email: claims.email, deletedAt: null },
+      });
+      if (user) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { entraOid: claims.oid, authProvider: 'entra', name: claims.name ?? user.name },
+        });
+      }
+    }
+
+    if (!user) {
+      throw new ForbiddenException(
+        'No account found. Contact your administrator to be provisioned before using SSO.',
+      );
+    }
+
+    if (!user.isActive) {
+      throw new ForbiddenException('Account is inactive');
+    }
+
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'user',
+      entityId: user.id,
+      action: 'sso_login',
+      source: 'web',
+    });
+
+    const sessionUser = await this.rbac.buildSessionUser(user.id);
+    if (!sessionUser) throw new UnauthorizedException();
+    return sessionUser;
+  }
+
+  parseOAuthState(state: string): { returnTo: string } {
+    try {
+      const parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as { returnTo?: string };
+      const returnTo = parsed.returnTo || '/portal';
+      if (!returnTo.startsWith('/')) return { returnTo: '/portal' };
+      return { returnTo };
+    } catch {
+      return { returnTo: '/portal' };
+    }
+  }
 
   async validateUser(email: string, password: string): Promise<SessionUser | null> {
     const user = await this.prisma.user.findUnique({

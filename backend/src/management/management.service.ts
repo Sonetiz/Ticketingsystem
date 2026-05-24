@@ -30,13 +30,14 @@ export class ManagementService {
     });
   }
 
-  async createUser(data: { email: string; name: string; password: string; roleIds?: string[] }) {
-    const passwordHash = await bcrypt.hash(data.password, 12);
+  async createUser(data: { email: string; name: string; password?: string; roleIds?: string[] }) {
+    const passwordHash = data.password ? await bcrypt.hash(data.password, 12) : null;
     const user = await this.prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
         name: data.name,
         passwordHash,
+        authProvider: passwordHash ? 'local' : 'entra',
         roles: data.roleIds?.length
           ? { create: data.roleIds.map((roleId) => ({ roleId })) }
           : undefined,
@@ -92,12 +93,42 @@ export class ManagementService {
     return this.prisma.team.create({ data });
   }
 
+  async updateTeam(
+    id: string,
+    data: { slug?: string; name?: string; description?: string; isDefault?: boolean },
+    actor: SessionUser,
+  ) {
+    const team = await this.prisma.team.update({ where: { id }, data });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'team',
+      entityId: id,
+      action: 'updated',
+      newValue: data,
+    });
+    return team;
+  }
+
   async addTeamMember(teamId: string, userId: string, isLead = false) {
     return this.prisma.teamMembership.upsert({
       where: { teamId_userId: { teamId, userId } },
       create: { teamId, userId, isLead },
       update: { isLead },
     });
+  }
+
+  async removeTeamMember(teamId: string, userId: string, actor: SessionUser) {
+    await this.prisma.teamMembership.delete({
+      where: { teamId_userId: { teamId, userId } },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'team',
+      entityId: teamId,
+      action: 'member_removed',
+      newValue: { userId },
+    });
+    return { success: true };
   }
 
   // Status & Priority config

@@ -5,19 +5,31 @@ import {
   Body,
   Res,
   Req,
+  Query,
   UseGuards,
   HttpCode,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { SessionAuthGuard } from './auth.guards';
 import { LoginDto } from './dto/login.dto';
+import { establishSession } from './session.helper';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+  ) {}
+
+  @Get('config')
+  getConfig() {
+    return this.auth.getAuthConfig();
+  }
 
   @Post('login')
   @HttpCode(200)
@@ -28,14 +40,47 @@ export class AuthController {
       res.status(401);
       return { message: 'Invalid credentials' };
     }
-    const session = await this.auth.createSession(user.id);
+    const { csrfToken } = await establishSession(this.auth, user.id, res);
+    return { user, csrfToken };
+  }
+
+  @Get('microsoft')
+  microsoftLogin(@Query('returnTo') returnTo: string, @Res() res: Response) {
+    if (!this.auth.isSsoEnabled()) {
+      throw new BadRequestException('SSO is not enabled');
+    }
+    const safeReturnTo = returnTo?.startsWith('/') ? returnTo : '/portal';
+    const url = this.auth.getMicrosoftAuthUrl(safeReturnTo);
+    return res.redirect(url);
+  }
+
+  @Get('microsoft/callback')
+  async microsoftCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    if (error || !code) {
+      const frontendUrl = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/portal/login?error=sso_failed`);
+    }
+
+    const { returnTo } = this.auth.parseOAuthState(state || '');
+    const result = await this.auth.handleMicrosoftCallback(code);
+    const session = await this.auth.createSession(result.user.id);
     res.cookie('session', session.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       expires: session.expiresAt,
     });
-    return { user, csrfToken: session.csrfToken };
+
+    const frontendUrl = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+    const callbackPath = returnTo.startsWith('/manage') ? '/manage/login/callback' : '/portal/login/callback';
+    return res.redirect(
+      `${frontendUrl}${callbackPath}?csrf=${encodeURIComponent(session.csrfToken)}&returnTo=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   @Post('logout')

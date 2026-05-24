@@ -5,6 +5,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
+import { RbacModule } from '../rbac/rbac.module';
+import { AuthModule } from '../auth/auth.module';
 import { SlaModule } from '../sla/sla.module';
 import { RecurringModule } from '../recurring/recurring.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
@@ -40,6 +42,8 @@ import { WorkerScheduler } from './worker.scheduler';
     ),
     PrismaModule,
     AuditModule,
+    RbacModule,
+    AuthModule,
     SlaModule,
     RecurringModule,
     IntegrationsModule,

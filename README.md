@@ -84,6 +84,18 @@ npx pnpm dev
 | API Docs (Swagger) | http://localhost:3001/api/docs | — |
 | MailHog UI | http://localhost:8025 | — |
 
+### Troubleshooting: ticket creation fails after seed
+
+If creating tickets returns a 500 error immediately after seeding, reset the ticket number sequence:
+
+```bash
+cd backend && npx prisma db execute --stdin <<'SQL'
+SELECT setval('"Ticket_number_seq"', (SELECT COALESCE(MAX(number), 1) FROM "Ticket"), true);
+SQL
+```
+
+This is fixed automatically in newer seeds; the command above repairs existing databases.
+
 ## Docker Compose (Full Stack)
 
 ```bash
@@ -104,6 +116,8 @@ Key variables:
 | `SESSION_SECRET` | Session cookie signing secret | (change in production) |
 | `EMAIL_CONNECTOR` | `mock`, `imap`, or `graph` | `mock` |
 | `TEAMS_CONNECTOR` | `mock` or `graph` | `mock` |
+| `SSO_ENABLED` | Enable Microsoft Entra ID SSO | `false` |
+| `AZURE_AD_*` | Entra ID app registration credentials | see `.env.example` |
 | `SMTP_HOST` / `SMTP_PORT` | Outbound email (MailHog in dev) | `localhost:1025` |
 
 ## Commands

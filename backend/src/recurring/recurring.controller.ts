@@ -32,4 +32,15 @@ export class RecurringController {
   toggle(@Param('id') id: string, @Body('isActive') isActive: boolean) {
     return this.recurring.toggleActive(id, isActive);
   }
+
+  @Patch(':id')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('recurring.update')
+  update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateRecurringTaskDto>,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.recurring.update(id, dto, user);
+  }
 }
