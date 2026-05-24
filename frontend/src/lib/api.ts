@@ -11,8 +11,9 @@ function buildHeaders(options: RequestInit, json = true): Record<string, string>
   if (json && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  if (csrfToken && options.method && options.method !== 'GET') {
-    headers['X-CSRF-Token'] = csrfToken;
+  const token = getCsrfToken();
+  if (token && options.method && options.method !== 'GET') {
+    headers['X-CSRF-Token'] = token;
   }
   return headers;
 }

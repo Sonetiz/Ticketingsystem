@@ -68,31 +68,67 @@ flowchart TB
   API --> Disk
 ```
 
-## Production Deployment
+## Deployment With Docker Compose
 
-The deployment path is defined, but the application should not be treated as production-ready until the open blocker items in `TODO.md` are closed.
+Docker Compose is the canonical way to run the current application stack. The checked-in `docker-compose.yml` builds and starts:
 
-### Prerequisites
+- PostgreSQL 16 with a persistent `postgres_data` volume
+- Redis 7 with a persistent `redis_data` volume
+- MailHog for local SMTP testing
+- NestJS backend API on port `3001`
+- BullMQ worker using the same backend image
+- Next.js frontend on port `3000`, proxying `/api/*` to `http://backend:3001/api` inside the Compose network
 
-- Docker (or Kubernetes) with PostgreSQL 16+, Redis 7+
-- TLS termination via reverse proxy (nginx, Traefik, or Caddy)
-- Secrets manager or environment injection for `SESSION_SECRET`, `DATABASE_URL`, `REDIS_URL`
+### Local or Demo Stack
 
-### Deploy steps
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
 
-1. Copy `.env.example` to `.env` and set production secrets (never use dev defaults).
-2. Run database migrations: `pnpm --filter backend db:migrate:deploy`
-3. Build images: `docker compose -f docker-compose.yml build`
-4. Start the stack without MailHog for production-like environments; use real SMTP/IMAP or Microsoft Graph connectors once implemented.
-5. Verify health: `GET /health`, `GET /ready`, `GET /live`
-6. Verify metrics: `GET /metrics` (Prometheus scrape target)
+After the database is available, apply migrations and seed data:
+
+```bash
+docker compose exec backend npx prisma migrate deploy
+docker compose exec backend npx prisma db seed
+```
+
+Then verify the stack:
+
+```bash
+curl http://localhost:3001/health
+curl http://localhost:3001/ready
+curl http://localhost:3001/live
+curl http://localhost:3001/metrics
+```
+
+### Production Readiness Note
+
+The current Compose file is suitable for local, demo, and staging-style deployments. It is not yet a hardened production overlay because it still exposes Postgres/Redis ports, includes MailHog, uses local-disk uploads, and does not run migrations as an init step.
+
+Before production, add a production Compose override or Kubernetes/Swarm equivalent that:
+
+- Removes MailHog and uses real SMTP/IMAP or Microsoft Graph configuration.
+- Does not publish Postgres or Redis to the public host interface.
+- Provides secrets through Docker/Kubernetes secrets or a secrets manager.
+- Runs `prisma migrate deploy` during release or as an init job.
+- Places the frontend/backend behind TLS termination with correct `trust proxy` handling.
+- Uses shared object storage for uploads if running more than one backend replica.
+- Adds container healthchecks and non-root users.
+
+The app should not be treated as production-ready until the open blocker items in `TODO.md` are closed.
 
 ### Runbook
 
 | Task | Command / endpoint |
 |------|-------------------|
-| Check API health | `curl /health` |
-| Check readiness | `curl /ready` |
+| Start stack | `docker compose up -d --build` |
+| Stop stack | `docker compose down` |
+| Tail logs | `docker compose logs -f backend worker frontend` |
+| Run migrations | `docker compose exec backend npx prisma migrate deploy` |
+| Seed local data | `docker compose exec backend npx prisma db seed` |
+| Check API health | `curl http://localhost:3001/health` |
+| Check readiness | `curl http://localhost:3001/ready` |
 | View queue depth | Prometheus `queue_depth` metric |
 | Manual SLA run | Worker cron runs every minute |
 | Attachment cleanup | Worker cron daily at 03:00 UTC |
