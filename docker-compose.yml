@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ticketsystem
+      POSTGRES_PASSWORD: ticketsystem
+      POSTGRES_DB: ticketsystem
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ticketsystem']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - '3001:3001'
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://ticketsystem:ticketsystem@postgres:5432/ticketsystem?schema=public
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ['node', 'dist/main.js', 'worker']
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://ticketsystem:ticketsystem@postgres:5432/ticketsystem?schema=public
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:3001/api
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

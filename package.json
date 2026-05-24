@@ -1,0 +1,27 @@
+{
+  "name": "ticketsystem",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Modern IT support ticketing system",
+  "scripts": {
+    "dev": "pnpm run --parallel dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:worker": "pnpm --filter backend dev:worker",
+    "build": "pnpm run --filter shared build && pnpm run --filter backend build && pnpm run --filter frontend build",
+    "test": "pnpm run --filter backend test && pnpm run --filter frontend test",
+    "lint": "pnpm run --filter backend lint && pnpm run --filter frontend lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:seed": "pnpm --filter backend db:seed",
+    "db:studio": "pnpm --filter backend db:studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

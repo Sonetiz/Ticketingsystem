@@ -1,0 +1,774 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & RBAC ───────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String?
+  name         String
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roles              UserRole[]
+  teamMemberships    TeamMembership[]
+  requestedTickets   Ticket[]           @relation("TicketRequester")
+  affectedTickets    Ticket[]           @relation("TicketAffectedUser")
+  assignedTickets    Ticket[]           @relation("TicketAssignee")
+  messages           TicketMessage[]
+  attachments        TicketAttachment[]
+  watchers           TicketWatcher[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  apiTokens          ApiToken[]
+  ownedProjects      Project[]          @relation("ProjectOwner")
+  projectMemberships ProjectMember[]
+  magicLinks         MagicLink[]
+  sessions           Session[]
+  mentions           MessageMention[]
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  csrfToken String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ApiToken {
+  id          String    @id @default(uuid())
+  userId      String
+  name        String
+  tokenHash   String    @unique
+  permissions String[]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Teams ──────────────────────────────────────────────────────────────────
+
+model Team {
+  id          String    @id @default(uuid())
+  slug        String    @unique
+  name        String
+  description String?
+  isDefault   Boolean   @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships      TeamMembership[]
+  assignedTickets  Ticket[]
+  recurringTasks   RecurringTaskTemplate[]
+}
+
+model TeamMembership {
+  teamId String
+  userId String
+  isLead Boolean @default(false)
+  team   Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+}
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
+model StatusDefinition {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  isClosed  Boolean  @default(false)
+  isHold    Boolean  @default(false)
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PriorityDefinition {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  sortOrder Int      @default(0)
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tickets         Ticket[]
+  recurringTasks  RecurringTaskTemplate[]
+  slaRules        SlaRule[]
+}
+
+model Service {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tickets  Ticket[]
+  slaRules SlaRule[]
+  assets   Asset[]
+}
+
+// ─── Tickets ────────────────────────────────────────────────────────────────
+
+model Ticket {
+  id                    String    @id @default(uuid())
+  number                Int       @unique @default(autoincrement())
+  title                 String
+  description           String    @db.Text
+  status                String    @default("new")
+  priority              String    @default("normal")
+  impact                String    @default("medium")
+  urgency               String    @default("medium")
+  source                String    @default("web")
+  dueAt                 DateTime?
+  slaTargetAt           DateTime?
+  holdUntil             DateTime?
+  holdReason            String?
+  holdNote              String?   @db.Text
+  holdById              String?
+  currentEscalationLevel Int      @default(0)
+  slaBreached           Boolean   @default(false)
+  slaBreachedAt         DateTime?
+  resolvedAt            DateTime?
+  closedAt              DateTime?
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  requesterId      String?
+  affectedUserId   String?
+  assigneeId       String?
+  assignedTeamId   String?
+  projectId        String?
+  categoryId       String?
+  serviceId        String?
+  recurringSourceId String?
+  parentTicketId   String?
+
+  requester       User?                  @relation("TicketRequester", fields: [requesterId], references: [id])
+  affectedUser    User?                  @relation("TicketAffectedUser", fields: [affectedUserId], references: [id])
+  assignee        User?                  @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  assignedTeam    Team?                  @relation(fields: [assignedTeamId], references: [id])
+  project         Project?               @relation(fields: [projectId], references: [id])
+  category        Category?              @relation(fields: [categoryId], references: [id])
+  service         Service?               @relation(fields: [serviceId], references: [id])
+  recurringSource RecurringTaskTemplate? @relation(fields: [recurringSourceId], references: [id])
+  parentTicket    Ticket?                @relation("TicketParent", fields: [parentTicketId], references: [id])
+  childTickets    Ticket[]               @relation("TicketParent")
+
+  messages           TicketMessage[]
+  attachments        TicketAttachment[]
+  statusHistory      TicketStatusHistory[]
+  priorityHistory    TicketPriorityHistory[]
+  assignmentHistory  TicketAssignmentHistory[]
+  watchers           TicketWatcher[]
+  tags               TicketTag[]
+  linksFrom          TicketLink[]              @relation("LinkFrom")
+  linksTo            TicketLink[]              @relation("LinkTo")
+  emailMessages      EmailMessage[]
+  teamsMessages      TeamsMessage[]
+  slaBreachEvents    SlaBreachEvent[]
+  magicLinks         MagicLink[]
+  customFieldValues  CustomFieldValue[]
+  externalContacts   TicketExternalContact[]
+  csatSurvey         CsatSurvey?
+  changeRequest      ChangeRequest?
+  approvalRequests   ApprovalRequest[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assigneeId])
+  @@index([assignedTeamId])
+  @@index([projectId])
+  @@index([dueAt])
+  @@index([holdUntil])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([deletedAt])
+}
+
+model TicketExternalContact {
+  id        String   @id @default(uuid())
+  ticketId  String
+  name      String
+  email     String
+  role      String?
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model TicketMessage {
+  id        String   @id @default(uuid())
+  ticketId  String
+  authorId  String?
+  kind      String
+  body      String   @db.Text
+  isPublic  Boolean  @default(false)
+  source    String   @default("web")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticket   Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author   User?            @relation(fields: [authorId], references: [id])
+  mentions MessageMention[]
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+model MessageMention {
+  id        String @id @default(uuid())
+  messageId String
+  userId    String
+  message   TicketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+model TicketAttachment {
+  id           String   @id @default(uuid())
+  ticketId     String
+  messageId    String?
+  uploadedById String?
+  filename     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  isPublic     Boolean  @default(false)
+  scanStatus   String   @default("pending")
+  createdAt    DateTime @default(now())
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy User?  @relation(fields: [uploadedById], references: [id])
+
+  @@index([ticketId])
+}
+
+model TicketStatusHistory {
+  id        String   @id @default(uuid())
+  ticketId  String
+  fromStatus String?
+  toStatus  String
+  actorId   String?
+  source    String   @default("web")
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model TicketPriorityHistory {
+  id           String   @id @default(uuid())
+  ticketId     String
+  fromPriority String?
+  toPriority   String
+  reason       String   @default("manual")
+  actorId      String?
+  source       String   @default("web")
+  createdAt    DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model TicketAssignmentHistory {
+  id               String   @id @default(uuid())
+  ticketId         String
+  fromAssigneeId   String?
+  toAssigneeId     String?
+  fromTeamId       String?
+  toTeamId         String?
+  actorId          String?
+  source           String   @default("web")
+  createdAt        DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model TicketWatcher {
+  ticketId  String
+  userId    String
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, userId])
+}
+
+model TicketTag {
+  ticketId String
+  tag      String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tag])
+  @@index([tag])
+}
+
+model TicketLink {
+  id           String   @id @default(uuid())
+  fromTicketId String
+  toTicketId   String
+  linkType     String
+  createdAt    DateTime @default(now())
+  fromTicket   Ticket   @relation("LinkFrom", fields: [fromTicketId], references: [id], onDelete: Cascade)
+  toTicket     Ticket   @relation("LinkTo", fields: [toTicketId], references: [id], onDelete: Cascade)
+
+  @@unique([fromTicketId, toTicketId, linkType])
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+model Project {
+  id          String    @id @default(uuid())
+  name        String
+  description String?   @db.Text
+  status      String    @default("active")
+  dueAt       DateTime?
+  ownerId     String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner   User?           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members ProjectMember[]
+  tickets Ticket[]
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+}
+
+model ProjectTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tickets ProjectTemplateTicket[]
+}
+
+model ProjectTemplateTicket {
+  id          String  @id @default(uuid())
+  templateId  String
+  title       String
+  description String? @db.Text
+  priority    String  @default("normal")
+  sortOrder   Int     @default(0)
+  template    ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+// ─── Recurring Tasks ──────────────────────────────────────────────────────────
+
+model RecurringTaskTemplate {
+  id                 String    @id @default(uuid())
+  name               String
+  titleTemplate      String
+  descriptionTemplate String?  @db.Text
+  rrule              String
+  assigneeId         String?
+  assignedTeamId     String?
+  priority           String    @default("normal")
+  categoryId         String?
+  dueDateOffsetHours Int       @default(24)
+  isActive           Boolean   @default(true)
+  lastRunAt          DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignedTeam Team?     @relation(fields: [assignedTeamId], references: [id])
+  category     Category? @relation(fields: [categoryId], references: [id])
+  runs         RecurringRun[]
+  tickets      Ticket[]
+}
+
+model RecurringRun {
+  id         String   @id @default(uuid())
+  templateId String
+  runKey     String
+  ticketId   String?
+  createdAt  DateTime @default(now())
+  template   RecurringTaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, runKey])
+}
+
+// ─── SLA ──────────────────────────────────────────────────────────────────────
+
+model SlaRule {
+  id                  String   @id @default(uuid())
+  name                String
+  priority            String?
+  categoryId          String?
+  serviceId           String?
+  responseMinutes     Int?
+  resolutionMinutes   Int?
+  escalationThresholds Json?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id])
+  service  Service?  @relation(fields: [serviceId], references: [id])
+}
+
+model SlaBreachEvent {
+  id        String   @id @default(uuid())
+  ticketId  String
+  breachType String
+  breachedAt DateTime @default(now())
+  notified  Boolean  @default(false)
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model BusinessHours {
+  id        String   @id @default(uuid())
+  name      String   @default("default")
+  timezone  String   @default("UTC")
+  schedule  Json
+  isDefault Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Holiday {
+  id        String   @id @default(uuid())
+  name      String
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+}
+
+// ─── Integrations ─────────────────────────────────────────────────────────────
+
+model IntegrationSetting {
+  id        String   @id @default(uuid())
+  connector String   @unique
+  config    Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailMessage {
+  id          String   @id @default(uuid())
+  ticketId    String?
+  messageId   String   @unique
+  inReplyTo   String?
+  references  String[]
+  fromAddress String
+  toAddresses String[]
+  ccAddresses String[]
+  subject     String
+  bodyText    String?  @db.Text
+  bodyHtml    String?  @db.Text
+  direction   String
+  rawHeaders  Json?
+  createdAt   DateTime @default(now())
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@index([inReplyTo])
+}
+
+model TeamsMessage {
+  id              String   @id @default(uuid())
+  ticketId        String?
+  externalId      String   @unique
+  channelId       String?
+  fromUserId      String?
+  body            String   @db.Text
+  direction       String
+  createdAt       DateTime @default(now())
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+}
+
+model NotificationTemplate {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  subject   String?
+  body      String   @db.Text
+  channel   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  channel   String
+  title     String
+  body      String   @db.Text
+  payload   Json?
+  status    String   @default("pending")
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+// ─── Public Access ────────────────────────────────────────────────────────────
+
+model MagicLink {
+  id        String    @id @default(uuid())
+  ticketId  String
+  userId    String?
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  entityType String
+  entityId   String
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  source     String   @default("web")
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+// ─── ITSM Extras (stubbed) ────────────────────────────────────────────────────
+
+model KnowledgeArticle {
+  id        String    @id @default(uuid())
+  title     String
+  slug      String    @unique
+  content   String    @db.Text
+  category  String?
+  isPublic  Boolean   @default(false)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model CannedResponse {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TicketTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  title       String
+  description String?  @db.Text
+  priority    String   @default("normal")
+  categoryId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CustomFieldDef {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  fieldType String
+  options   Json?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  values CustomFieldValue[]
+}
+
+model CustomFieldValue {
+  id      String @id @default(uuid())
+  fieldId String
+  ticketId String
+  value   String @db.Text
+  field   CustomFieldDef @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  ticket  Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, ticketId])
+}
+
+model Asset {
+  id          String    @id @default(uuid())
+  name        String
+  assetType   String
+  identifier  String?
+  serviceId   String?
+  metadata    Json?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  service Service? @relation(fields: [serviceId], references: [id])
+}
+
+model ChangeRequest {
+  id          String   @id @default(uuid())
+  ticketId    String   @unique
+  changeType  String
+  riskLevel   String   @default("low")
+  plan        String?  @db.Text
+  rollback    String?  @db.Text
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model ApprovalRequest {
+  id          String    @id @default(uuid())
+  ticketId    String
+  approverEmail String
+  status      String    @default("pending")
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model CsatSurvey {
+  id        String   @id @default(uuid())
+  ticketId  String   @unique
+  rating    Int?
+  comment   String?  @db.Text
+  submittedAt DateTime?
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model SavedView {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  filters   Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
