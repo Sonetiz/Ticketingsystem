@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TicketsService } from '../../tickets/tickets.service';
@@ -22,7 +22,9 @@ export class EmailDispatchService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => TicketsService))
     private readonly tickets: TicketsService,
+    @Inject(forwardRef(() => MessagesService))
     private readonly messages: MessagesService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,

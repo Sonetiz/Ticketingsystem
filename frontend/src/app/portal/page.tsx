@@ -15,6 +15,7 @@ export default function PortalDashboard() {
     { label: 'Open Tickets', value: stats?.openTickets, href: '/portal/tickets?view=active', color: 'border-blue-500' },
     { label: 'My Assigned', value: stats?.myAssigned, href: '/portal/tickets?view=mine', color: 'border-purple-500' },
     { label: 'Team Queue', value: stats?.teamQueue, href: '/portal/tickets?view=team', color: 'border-indigo-500' },
+    { label: 'Unassigned', value: stats?.unassigned, href: '/portal/unassigned-tickets', color: 'border-sky-500' },
     { label: 'On Hold', value: stats?.onHold, href: '/portal/tickets?view=on-hold', color: 'border-amber-500' },
     { label: 'Overdue', value: stats?.overdue, href: '/portal/tickets?view=overdue', color: 'border-red-500' },
     { label: 'SLA Breached', value: stats?.slaBreached, href: '/portal/tickets?slaBreached=true', color: 'border-orange-500' },

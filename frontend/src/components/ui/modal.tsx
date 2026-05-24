@@ -1,5 +1,7 @@
 'use client';
 
+import * as Dialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Modal({
@@ -15,20 +17,34 @@ export function Modal({
   children: React.ReactNode;
   wide?: boolean;
 }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div
-        className={cn('bg-card rounded-xl border border-border shadow-xl w-full max-h-[90vh] overflow-y-auto', wide ? 'max-w-2xl' : 'max-w-lg')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-semibold text-lg">{title}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none">&times;</button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Content
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+          className={cn(
+            'fixed left-1/2 top-1/2 z-50 w-full max-h-[90vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card shadow-xl',
+            wide ? 'max-w-2xl' : 'max-w-lg',
+          )}
+        >
+          <div className="flex items-center justify-between border-b border-border p-4">
+            <Dialog.Title id="modal-title" className="text-lg font-semibold">
+              {title}
+            </Dialog.Title>
+            <Dialog.Close
+              aria-label="Close dialog"
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-5 w-5" />
+            </Dialog.Close>
+          </div>
+          <div className="p-4">{children}</div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

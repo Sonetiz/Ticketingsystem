@@ -70,6 +70,7 @@ export interface DashboardStats {
   openTickets: number;
   myAssigned: number;
   teamQueue: number;
+  unassigned: number;
   onHold: number;
   overdue: number;
   slaBreached: number;

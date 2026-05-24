@@ -20,8 +20,11 @@ RUN pnpm --filter backend build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NODE_PATH=/app/backend/node_modules:/app/node_modules
 COPY --from=builder /app/backend/dist ./dist
-COPY --from=builder /app/backend/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/backend/node_modules ./backend/node_modules
+COPY --from=builder /app/shared ./shared
 COPY --from=builder /app/backend/prisma ./prisma
 COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
 EXPOSE 3001

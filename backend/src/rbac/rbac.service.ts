@@ -76,16 +76,25 @@ export class RbacService {
     return this.hasPermission(user, 'manage.*') || this.hasAnyRole(user, ['super_admin', 'system_admin']);
   }
 
-  async canAccessTicket(user: SessionUser, ticket: {
-    assigneeId: string | null;
-    assignedTeamId: string | null;
-    requesterId: string | null;
-  }): Promise<boolean> {
+  async canAccessTicket(
+    user: SessionUser,
+    ticket: {
+      id?: string;
+      assigneeId: string | null;
+      assignedTeamId: string | null;
+      requesterId: string | null;
+    },
+  ): Promise<boolean> {
     if (this.hasPermission(user, 'ticket.read.all')) return true;
     if (ticket.assigneeId === user.id) return true;
     if (ticket.requesterId === user.id) return true;
     if (ticket.assignedTeamId && user.teamIds.includes(ticket.assignedTeamId)) return true;
-    if (this.hasPermission(user, 'ticket.read')) return true;
+    if (ticket.id) {
+      const watcher = await this.prisma.ticketWatcher.findUnique({
+        where: { ticketId_userId: { ticketId: ticket.id, userId: user.id } },
+      });
+      if (watcher) return true;
+    }
     return false;
   }
 }

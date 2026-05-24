@@ -183,6 +183,9 @@ export default function RecurringPage() {
                     <button className="text-xs hover:underline" onClick={() => toggleMutation.mutate({ id: task.id, isActive: !task.isActive })}>
                       {task.isActive ? 'Pause' : 'Resume'}
                     </button>
+                    <button className="text-xs hover:underline" onClick={() => api(`/recurring-tasks/${task.id}/run-now`, { method: 'POST', headers: { 'X-CSRF-Token': getCsrfToken() || '' } }).then(() => queryClient.invalidateQueries({ queryKey: ['recurring'] }))}>Run now</button>
+                    <button className="text-xs hover:underline" onClick={() => api(`/recurring-tasks/${task.id}/duplicate`, { method: 'POST', headers: { 'X-CSRF-Token': getCsrfToken() || '' } }).then(() => queryClient.invalidateQueries({ queryKey: ['recurring'] }))}>Duplicate</button>
+                    <button className="text-red-600 text-xs hover:underline" onClick={() => { if (confirm('Delete this recurring task?')) api(`/recurring-tasks/${task.id}`, { method: 'DELETE', headers: { 'X-CSRF-Token': getCsrfToken() || '' } }).then(() => queryClient.invalidateQueries({ queryKey: ['recurring'] })); }}>Delete</button>
                   </td>
                 </tr>
               ))}

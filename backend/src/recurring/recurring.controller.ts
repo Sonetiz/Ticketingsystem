@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RecurringService } from './recurring.service';
 import { CreateRecurringTaskDto } from './dto/recurring.dto';
@@ -42,5 +42,26 @@ export class RecurringController {
     @CurrentUser() user: SessionUser,
   ) {
     return this.recurring.update(id, dto, user);
+  }
+
+  @Delete(':id')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('recurring.update')
+  remove(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.recurring.remove(id, user);
+  }
+
+  @Post(':id/duplicate')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('recurring.create')
+  duplicate(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.recurring.duplicate(id, user);
+  }
+
+  @Post(':id/run-now')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('recurring.update')
+  runNow(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.recurring.runNow(id, user);
   }
 }

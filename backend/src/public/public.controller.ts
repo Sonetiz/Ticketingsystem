@@ -9,12 +9,14 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PublicService } from './public.service';
 import { PublicReplyDto } from './dto/public.dto';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { AuthService } from '../auth/auth.service';
+import { validateUpload, multerLimits } from '../attachments/file-validation';
 
 @ApiTags('public')
 @Controller('public/tickets')
@@ -43,9 +45,15 @@ export class PublicController {
   }
 
   @Post(':token/attachments')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      ...multerLimits(),
+    }),
+  )
   async upload(@Param('token') token: string, @UploadedFile() file: Express.Multer.File) {
     const link = await this.auth.validateMagicLink(token);
+    await validateUpload(file);
     const attachment = await this.attachments.save(link.ticketId, file, undefined, true);
     return {
       ...attachment,

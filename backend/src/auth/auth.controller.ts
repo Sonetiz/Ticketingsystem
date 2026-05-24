@@ -13,10 +13,12 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
-import { SessionAuthGuard } from './auth.guards';
+import { SessionAuthGuard, CsrfGuard } from './auth.guards';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto/password.dto';
 import { establishSession } from './session.helper';
 import { ConfigService } from '@nestjs/config';
+import { SessionUser } from '@ticketsystem/shared';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -96,5 +98,34 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   async me(@Req() req: Request & { user: unknown }) {
     return req.user;
+  }
+
+  @Post('password/forgot')
+  @HttpCode(200)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.requestPasswordReset(dto.email);
+  }
+
+  @Post('password/reset')
+  @HttpCode(200)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto.token, dto.newPassword);
+  }
+
+  @Post('password/change')
+  @HttpCode(200)
+  @UseGuards(SessionAuthGuard, CsrfGuard)
+  async changePassword(
+    @Req() req: Request & { user: SessionUser },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.auth.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
+  }
+
+  @Post('sessions/revoke-all')
+  @HttpCode(200)
+  @UseGuards(SessionAuthGuard, CsrfGuard)
+  async revokeAllSessions(@Req() req: Request & { user: SessionUser; sessionToken?: string }) {
+    return this.auth.revokeAllSessions(req.user.id, req.sessionToken);
   }
 }

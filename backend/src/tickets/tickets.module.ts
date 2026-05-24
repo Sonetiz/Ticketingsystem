@@ -3,9 +3,18 @@ import { TicketsService } from './tickets.service';
 import { TicketsController } from './tickets.controller';
 import { SlaModule } from '../sla/sla.module';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { RealtimeModule } from '../common/realtime/realtime.module';
+import { CsatModule } from '../csat/csat.module';
 
 @Module({
-  imports: [SlaModule, forwardRef(() => AuthModule)],
+  imports: [
+    forwardRef(() => SlaModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => NotificationsModule),
+    RealtimeModule,
+    forwardRef(() => CsatModule),
+  ],
   providers: [TicketsService],
   controllers: [TicketsController],
   exports: [TicketsService],

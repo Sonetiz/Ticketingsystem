@@ -1,3 +1,4 @@
+import { PartialType } from '@nestjs/swagger';
 import {
   IsString,
   IsOptional,
@@ -73,7 +74,7 @@ export class CreateTicketDto {
   tags?: string[];
 }
 
-export class UpdateTicketDto extends CreateTicketDto {
+export class UpdateTicketDto extends PartialType(CreateTicketDto) {
   @IsOptional()
   @IsString()
   status?: string;
@@ -133,7 +134,7 @@ export class TicketFilterDto {
   categoryId?: string;
 
   @IsOptional()
-  view?: 'active' | 'mine' | 'team' | 'on-hold' | 'overdue' | 'recent' | 'all';
+  view?: 'active' | 'mine' | 'team' | 'unassigned' | 'on-hold' | 'overdue' | 'recent' | 'all';
 
   @IsOptional()
   @Type(() => Number)

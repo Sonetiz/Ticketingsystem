@@ -20,14 +20,14 @@ import {
   SplitTicketDto,
   LinkTicketDto,
 } from './dto/ticket.dto';
-import { SessionAuthGuard, CsrfGuard } from '../auth/auth.guards';
+import { SessionAuthGuard, CsrfGuard, CombinedAuthGuard } from '../auth/auth.guards';
 import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 import { CurrentUser } from '../common/decorators';
 import { SessionUser } from '@ticketsystem/shared';
 
 @ApiTags('tickets')
 @Controller('tickets')
-@UseGuards(SessionAuthGuard, PermissionsGuard)
+@UseGuards(CombinedAuthGuard, PermissionsGuard)
 export class TicketsController {
   constructor(private readonly tickets: TicketsService) {}
 
@@ -41,6 +41,28 @@ export class TicketsController {
   @RequirePermission('ticket.read')
   findAll(@Query() filters: TicketFilterDto, @CurrentUser() user: SessionUser) {
     return this.tickets.findMany(filters, user);
+  }
+
+  @Post('bulk/assign')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.assign')
+  bulkAssign(@Body() body: { ids: string[] } & AssignTicketDto, @CurrentUser() user: SessionUser) {
+    const { ids, ...dto } = body;
+    return this.tickets.bulkAssign(ids, dto, user);
+  }
+
+  @Post('bulk/status')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  bulkStatus(@Body() body: { ids: string[]; status: string }, @CurrentUser() user: SessionUser) {
+    return this.tickets.bulkStatus(body.ids, body.status, user);
+  }
+
+  @Post('bulk/close')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  bulkClose(@Body() body: { ids: string[] }, @CurrentUser() user: SessionUser) {
+    return this.tickets.bulkClose(body.ids, user);
   }
 
   @Get(':id')
@@ -121,5 +143,28 @@ export class TicketsController {
     @CurrentUser() user: SessionUser,
   ) {
     return this.tickets.addWatcher(id, userId, user);
+  }
+
+  @Get(':id/watchers')
+  @RequirePermission('ticket.read')
+  getWatchers(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.tickets.getWatchers(id, user);
+  }
+
+  @Post(':id/watchers/:userId/remove')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  removeWatcher(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.tickets.removeWatcher(id, userId, user);
+  }
+
+  @Get(':id/children')
+  @RequirePermission('ticket.read')
+  getChildren(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.tickets.getChildren(id, user);
   }
 }

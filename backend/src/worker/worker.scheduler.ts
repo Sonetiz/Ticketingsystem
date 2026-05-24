@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { SlaService } from '../sla/sla.service';
 import { RecurringService } from '../recurring/recurring.service';
 import { EmailDispatchService } from '../integrations/email/email-dispatch.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 
 @Injectable()
 export class WorkerScheduler {
@@ -12,6 +13,7 @@ export class WorkerScheduler {
     private readonly sla: SlaService,
     private readonly recurring: RecurringService,
     private readonly emailDispatch: EmailDispatchService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -37,5 +39,13 @@ export class WorkerScheduler {
     if (process.env.EMAIL_CONNECTOR === 'mock') return;
     this.logger.debug('Polling email');
     await this.emailDispatch.pollInbound();
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async attachmentsRetention() {
+    const retentionDays = Number(process.env.ATTACHMENT_RETENTION_DAYS || 365);
+    this.logger.log(`Running attachment retention (>${retentionDays} days)`);
+    const deleted = await this.attachments.purgeExpiredAttachments(retentionDays);
+    this.logger.log(`Purged ${deleted} expired attachments`);
   }
 }

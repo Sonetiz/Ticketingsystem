@@ -21,4 +21,15 @@ export class NotificationsController {
   markRead(@Param('id') id: string, @CurrentUser() user: SessionUser) {
     return this.notifications.markRead(id, user.id);
   }
+
+  @Post('read-all')
+  @UseGuards(CsrfGuard)
+  markAllRead(@CurrentUser() user: SessionUser) {
+    return this.notifications.markAllRead(user.id);
+  }
+
+  @Get('unread-count')
+  unreadCount(@CurrentUser() user: SessionUser) {
+    return this.notifications.getUnreadCount(user.id);
+  }
 }

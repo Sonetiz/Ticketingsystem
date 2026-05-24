@@ -21,13 +21,87 @@ A modern, modular IT support ticketing system built with NestJS, Next.js, Postgr
 ## Architecture
 
 ```
-frontend/     Next.js 14 (App Router) — /portal, /manage, /status
-backend/      NestJS REST API + BullMQ worker
+frontend/     Next.js 14 (App Router) — /portal, /manage, /status, /csat
+backend/      NestJS REST API + BullMQ worker + WebSocket realtime
 shared/       Shared TypeScript types and Zod schemas
 docker-compose.yml   PostgreSQL, Redis, MailHog, backend, worker, frontend
 ```
 
-## Quick Start (Local Development)
+```mermaid
+flowchart TB
+  subgraph clients [Clients]
+    Portal[Support Portal]
+    Manage[Management Portal]
+    Public[Public Status / CSAT]
+  end
+  subgraph backend [Backend]
+    API[NestJS API]
+    Worker[BullMQ Worker]
+    WS[WebSocket Gateway]
+  end
+  subgraph data [Data Layer]
+    PG[(PostgreSQL)]
+    Redis[(Redis)]
+    Disk[Upload Storage]
+  end
+  Portal --> API
+  Manage --> API
+  Public --> API
+  Portal --> WS
+  API --> PG
+  API --> Redis
+  Worker --> PG
+  Worker --> Redis
+  API --> Disk
+```
+
+## Production Deployment
+
+### Prerequisites
+
+- Docker (or Kubernetes) with PostgreSQL 16+, Redis 7+
+- TLS termination via reverse proxy (nginx, Traefik, or Caddy)
+- Secrets manager or environment injection for `SESSION_SECRET`, `DATABASE_URL`, `REDIS_URL`
+
+### Deploy steps
+
+1. Copy `.env.example` to `.env` and set production secrets (never use dev defaults).
+2. Run database migrations: `pnpm --filter backend db:migrate:deploy`
+3. Build images: `docker compose -f docker-compose.yml build`
+4. Start stack without MailHog; use real SMTP/IMAP connectors.
+5. Verify health: `GET /health`, `GET /ready`, `GET /live`
+6. Verify metrics: `GET /metrics` (Prometheus scrape target)
+
+### Runbook
+
+| Task | Command / endpoint |
+|------|-------------------|
+| Check API health | `curl /health` |
+| Check readiness | `curl /ready` |
+| View queue depth | Prometheus `queue_depth` metric |
+| Manual SLA run | Worker cron runs every minute |
+| Attachment cleanup | Worker cron daily at 03:00 UTC |
+
+### Rollback
+
+1. Deploy previous container image tag.
+2. If a migration is incompatible, restore DB from backup taken before deploy.
+3. Run `prisma migrate resolve` only when directed by migration docs.
+
+### Backup & restore
+
+- **Database**: `pg_dump -Fc $DATABASE_URL > backup.dump` (daily; retain 30 days minimum).
+- **Uploads**: snapshot the `uploads` volume alongside DB backups.
+- **Restore**: `pg_restore -d $DATABASE_URL backup.dump` then restore uploads volume.
+
+### Secret rotation
+
+- `SESSION_SECRET`: rotate during maintenance window; all users re-login.
+- `ATTACHMENT_SIGNING_SECRET`: rotate invalidates existing download links.
+- `MAGIC_LINK_SECRET`: rotate invalidates outstanding magic links.
+- API tokens: revoke via management portal and re-issue.
+
+## Local Development
 
 ### Prerequisites
 
@@ -162,6 +236,18 @@ Key endpoint groups:
 - `GET /api/manage/*` — management portal (admin only)
 - `POST /api/integrations/email/webhook` — inbound email
 - `POST /api/integrations/teams/webhook` — inbound Teams message
+- `GET /api/search?q=` — global search (tickets, KB, assets, users)
+- `GET/POST /api/knowledge-base` — knowledge base CRUD
+- `GET/POST /api/assets` — asset CRUD
+- `GET/POST /api/approvals` — approval workflow
+- `GET /api/catalog` — service catalog browse
+- `POST /api/catalog/:id/request` — request a catalog service (creates ticket)
+- `GET/POST /api/saved-views` — saved ticket list views
+- `GET/POST /api/csat/:token` — public CSAT survey
+- `GET/POST /api/tickets/:id/worklog` — time tracking
+- `GET/POST /api/changes` — change management
+- `GET /api/problems/known-errors` — known error database
+- `GET /health`, `/ready`, `/live`, `/metrics` — ops endpoints (no `/api` prefix)
 
 ## Connector Runbook
 
@@ -213,6 +299,7 @@ The worker process (`pnpm dev:worker`) runs:
 | `hold.release` | Every minute | Auto-release expired holds |
 | `recurring.scan` | Every 5 minutes | Generate recurring tickets |
 | `email.poll` | Every 5 minutes | Poll IMAP inbox (non-mock) |
+| `attachmentsRetention` | Daily at 03:00 | Purge attachments on old closed tickets |
 
 ## Seed Data
 
@@ -245,4 +332,4 @@ The seed script creates:
 
 ## License
 
-Private — internal use.
+Proprietary — internal use. See [LICENSE](LICENSE).

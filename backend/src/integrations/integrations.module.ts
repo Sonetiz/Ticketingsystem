@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { IntegrationsController } from './integrations.controller';
 import { EmailDispatchService } from './email/email-dispatch.service';
 import {
@@ -14,8 +14,9 @@ import {
 import { TicketsModule } from '../tickets/tickets.module';
 import { MessagesModule } from '../messages/messages.module';
 
+@Global()
 @Module({
-  imports: [forwardRef(() => TicketsModule), MessagesModule],
+  imports: [forwardRef(() => TicketsModule), forwardRef(() => MessagesModule)],
   controllers: [IntegrationsController],
   providers: [
     EmailDispatchService,

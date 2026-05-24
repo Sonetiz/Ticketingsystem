@@ -60,4 +60,44 @@ export class AttachmentsService {
     const buffer = await fs.readFile(fullPath);
     return { attachment, buffer };
   }
+
+  listByTicket(ticketId: string) {
+    return this.prisma.ticketAttachment.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async deleteFile(attachmentId: string) {
+    const attachment = await this.prisma.ticketAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+    if (!attachment) return false;
+    const fullPath = path.join(this.uploadDir, attachment.storageKey);
+    try {
+      await fs.unlink(fullPath);
+    } catch {
+      // file may already be gone
+    }
+    await this.prisma.ticketAttachment.delete({ where: { id: attachmentId } });
+    return true;
+  }
+
+  async purgeExpiredAttachments(retentionDays: number) {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const attachments = await this.prisma.ticketAttachment.findMany({
+      where: {
+        ticket: {
+          status: 'closed',
+          closedAt: { lt: cutoff },
+        },
+      },
+    });
+
+    let deleted = 0;
+    for (const attachment of attachments) {
+      if (await this.deleteFile(attachment.id)) deleted++;
+    }
+    return deleted;
+  }
 }

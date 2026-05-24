@@ -58,7 +58,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: ['node', 'dist/main.js', 'worker']
+    command: ['node', 'dist/worker.js']
     env_file:
       - .env
     environment:
@@ -78,12 +78,16 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        API_URL: http://backend:3001/api
     ports:
       - '3000:3000'
     env_file:
       - .env
     environment:
       NEXT_PUBLIC_API_URL: http://backend:3001/api
+      API_URL: http://backend:3001/api
+      PORT: 3000
     depends_on:
       - backend
 

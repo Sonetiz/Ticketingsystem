@@ -211,7 +211,7 @@ export class AuthService {
     await this.prisma.session.deleteMany({ where: { token } });
   }
 
-  async validateApiToken(bearerToken: string): Promise<SessionUser | null> {
+  async validateApiToken(bearerToken: string): Promise<(SessionUser & { apiTokenId?: string; authMethod?: 'bearer' }) | null> {
     const tokenHash = createHash('sha256').update(bearerToken).digest('hex');
     const apiToken = await this.prisma.apiToken.findUnique({
       where: { tokenHash },
@@ -222,7 +222,99 @@ export class AuthService {
       where: { id: apiToken.id },
       data: { lastUsedAt: new Date() },
     });
-    return this.rbac.buildSessionUser(apiToken.userId);
+    const sessionUser = await this.rbac.buildSessionUser(apiToken.userId);
+    if (!sessionUser) return null;
+    const rolePerms = new Set(sessionUser.permissions);
+    const scoped = apiToken.permissions.length
+      ? sessionUser.permissions.filter((p) => apiToken.permissions.includes(p) || apiToken.permissions.includes('*'))
+      : sessionUser.permissions;
+    return {
+      ...sessionUser,
+      permissions: scoped.length ? scoped : Array.from(rolePerms),
+      apiTokenId: apiToken.id,
+      authMethod: 'bearer',
+    };
+  }
+
+  validatePasswordComplexity(password: string) {
+    if (password.length < 12) throw new BadRequestException('Password must be at least 12 characters');
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      throw new BadRequestException('Password must include upper, lower, and numeric characters');
+    }
+  }
+
+  async requestPasswordReset(email: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null, isActive: true },
+    });
+    if (!user || user.authProvider !== 'local') return { ok: true };
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const frontendUrl = this.config.get('FRONTEND_URL') || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/portal/reset-password?token=${rawToken}`;
+    await this.audit.log({
+      actorId: user.id,
+      entityType: 'user',
+      entityId: user.id,
+      action: 'password_reset_requested',
+    });
+    return { ok: true, resetUrl, email: user.email };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    this.validatePasswordComplexity(newPassword);
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const record = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+    const passwordHash = await this.hashPassword(newPassword);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      this.prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+      this.prisma.session.deleteMany({ where: { userId: record.userId } }),
+    ]);
+    await this.audit.log({
+      actorId: record.userId,
+      entityType: 'user',
+      entityId: record.userId,
+      action: 'password_reset_completed',
+    });
+    return { ok: true };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    this.validatePasswordComplexity(newPassword);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.passwordHash) throw new BadRequestException('Password change not available');
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+    const passwordHash = await this.hashPassword(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.audit.log({
+      actorId: userId,
+      entityType: 'user',
+      entityId: userId,
+      action: 'password_changed',
+    });
+    return { ok: true };
+  }
+
+  async revokeAllSessions(userId: string, exceptToken?: string) {
+    await this.prisma.session.deleteMany({
+      where: {
+        userId,
+        ...(exceptToken ? { token: { not: exceptToken } } : {}),
+      },
+    });
+    return { ok: true };
   }
 
   async createMagicLink(ticketId: string, userId?: string) {

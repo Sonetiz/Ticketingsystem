@@ -34,6 +34,7 @@ async function main() {
     'kb.read',
     'kb.create',
     'asset.read',
+    'asset.create',
   ];
 
   const permissions = await Promise.all(
@@ -50,10 +51,10 @@ async function main() {
   // Roles
   const roleDefs = [
     { slug: ROLES.SUPER_ADMIN, name: 'Super Admin', perms: ['*'] },
-    { slug: ROLES.SYSTEM_ADMIN, name: 'System Admin', perms: ['manage.*', 'ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'project.update', 'recurring.read', 'recurring.create', 'recurring.update', 'report.read'] },
-    { slug: ROLES.SUPPORT_ADMIN, name: 'Support Admin', perms: ['ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'recurring.read', 'recurring.create', 'report.read'] },
-    { slug: ROLES.TEAM_LEAD, name: 'Team Lead', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'recurring.read', 'report.read'] },
-    { slug: ROLES.AGENT, name: 'Agent', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.email', 'project.read'] },
+    { slug: ROLES.SYSTEM_ADMIN, name: 'System Admin', perms: ['manage.*', 'ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'project.update', 'recurring.read', 'recurring.create', 'recurring.update', 'report.read', 'kb.read', 'kb.create', 'asset.read', 'asset.create'] },
+    { slug: ROLES.SUPPORT_ADMIN, name: 'Support Admin', perms: ['ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'recurring.read', 'recurring.create', 'report.read', 'kb.read', 'kb.create', 'asset.read'] },
+    { slug: ROLES.TEAM_LEAD, name: 'Team Lead', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'recurring.read', 'report.read', 'kb.read', 'asset.read'] },
+    { slug: ROLES.AGENT, name: 'Agent', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.email', 'project.read', 'kb.read', 'asset.read'] },
     { slug: ROLES.AUDITOR, name: 'Auditor', perms: ['ticket.read.all', 'report.read'] },
     { slug: ROLES.REQUESTER, name: 'Requester', perms: ['ticket.create'] },
   ];
@@ -398,14 +399,101 @@ async function main() {
   });
 
   // Notification templates
-  await prisma.notificationTemplate.upsert({
-    where: { slug: 'ticket_assigned' },
-    create: {
+  const notificationTemplates = [
+    {
       slug: 'ticket_assigned',
       name: 'Ticket Assigned',
       subject: 'Ticket #{{number}} assigned to you',
       body: 'You have been assigned ticket #{{number}}: {{title}}',
       channel: 'email',
+    },
+    {
+      slug: 'ticket_status_changed',
+      name: 'Ticket Status Changed',
+      subject: 'Ticket #{{number}} status updated',
+      body: 'Ticket #{{number}} ({{title}}) is now {{status}}.',
+      channel: 'email',
+    },
+    {
+      slug: 'ticket_new_message',
+      name: 'New Ticket Message',
+      subject: 'New message on ticket #{{number}}',
+      body: '{{preview}}',
+      channel: 'in_app',
+    },
+    {
+      slug: 'ticket_mention',
+      name: 'Ticket Mention',
+      subject: 'You were mentioned on ticket #{{number}}',
+      body: '{{preview}}',
+      channel: 'email',
+    },
+    {
+      slug: 'sla_breached',
+      name: 'SLA Breached',
+      subject: 'SLA breached on ticket #{{number}}',
+      body: 'Ticket #{{number}} ({{title}}) has breached its SLA target.',
+      channel: 'email',
+    },
+    {
+      slug: 'approval_request',
+      name: 'Approval Request',
+      subject: 'Approval required: {{title}}',
+      body: 'Your approval is required for ticket #{{number}}: {{title}}.',
+      channel: 'email',
+    },
+    {
+      slug: 'approval_decided',
+      name: 'Approval Decided',
+      subject: 'Approval {{decision}} for {{title}}',
+      body: 'The approval request for ticket #{{number}} was {{decision}}.',
+      channel: 'email',
+    },
+    {
+      slug: 'csat_request',
+      name: 'CSAT Survey Request',
+      subject: 'How did we do on ticket #{{number}}?',
+      body: 'Please rate your support experience for ticket #{{number}} ({{title}}): {{url}}',
+      channel: 'email',
+    },
+    {
+      slug: 'password_reset',
+      name: 'Password Reset',
+      subject: 'Reset your password',
+      body: 'Use this link to reset your password: {{url}}',
+      channel: 'email',
+    },
+    {
+      slug: 'change_request_approval',
+      name: 'Change Request Approval',
+      subject: 'Change approval required: {{title}}',
+      body: 'A change request requires your approval: {{title}}.',
+      channel: 'email',
+    },
+  ];
+
+  for (const tpl of notificationTemplates) {
+    await prisma.notificationTemplate.upsert({
+      where: { slug: tpl.slug },
+      create: tpl,
+      update: { name: tpl.name, subject: tpl.subject, body: tpl.body, channel: tpl.channel },
+    });
+  }
+
+  // Service catalog item
+  await prisma.serviceCatalogItem.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000030' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000030',
+      serviceId: service.id,
+      name: 'New Email Account',
+      description: 'Request a new corporate email account for a user.',
+      formSchema: [
+        { name: 'displayName', label: 'Display Name', type: 'text', required: true },
+        { name: 'department', label: 'Department', type: 'text', required: false },
+      ],
+      icon: 'mail',
+      isActive: true,
     },
     update: {},
   });

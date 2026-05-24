@@ -69,6 +69,8 @@ export class CombinedAuthGuard implements CanActivate {
       const user = await this.auth.getSessionUser(sessionToken);
       if (user) {
         request.user = user;
+        request.sessionToken = sessionToken;
+        request.authMethod = 'cookie';
         return true;
       }
     }
@@ -77,6 +79,7 @@ export class CombinedAuthGuard implements CanActivate {
       const user = await this.auth.validateApiToken(authHeader.slice(7));
       if (user) {
         request.user = user;
+        request.authMethod = 'bearer';
         return true;
       }
     }
@@ -91,6 +94,7 @@ export class CsrfGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return true;
+    if (request.authMethod === 'bearer') return true;
     const sessionToken = request.cookies?.session;
     const csrfHeader = request.headers['x-csrf-token'] as string;
     if (!sessionToken || !csrfHeader) throw new UnauthorizedException('CSRF validation failed');

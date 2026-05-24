@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { RRule } from 'rrule';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -144,5 +144,73 @@ export class RecurringService {
       newValue: dto,
     });
     return updated;
+  }
+
+  async remove(id: string, actor: SessionUser) {
+    const updated = await this.prisma.recurringTaskTemplate.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'recurring_task',
+      entityId: id,
+      action: 'deleted',
+    });
+    return updated;
+  }
+
+  async duplicate(id: string, actor: SessionUser) {
+    const template = await this.prisma.recurringTaskTemplate.findUnique({ where: { id } });
+    if (!template) throw new NotFoundException('Recurring task not found');
+    return this.create(
+      {
+        name: `${template.name} (copy)`,
+        titleTemplate: template.titleTemplate,
+        descriptionTemplate: template.descriptionTemplate ?? undefined,
+        rrule: template.rrule,
+        assigneeId: template.assigneeId ?? undefined,
+        assignedTeamId: template.assignedTeamId ?? undefined,
+        priority: template.priority,
+        categoryId: template.categoryId ?? undefined,
+        dueDateOffsetHours: template.dueDateOffsetHours,
+        isActive: false,
+      },
+      actor,
+    );
+  }
+
+  async runNow(id: string, actor: SessionUser) {
+    const template = await this.prisma.recurringTaskTemplate.findUnique({ where: { id } });
+    if (!template) throw new NotFoundException('Recurring task not found');
+    const now = new Date();
+    const runKey = `manual-${now.toISOString()}`;
+    const dueAt = new Date(now.getTime() + template.dueDateOffsetHours * 60 * 60 * 1000);
+    const ticket = await this.prisma.ticket.create({
+      data: {
+        title: template.titleTemplate,
+        description: template.descriptionTemplate || '',
+        priority: template.priority,
+        categoryId: template.categoryId,
+        assignedTeamId: template.assignedTeamId,
+        assigneeId: template.assigneeId,
+        recurringSourceId: template.id,
+        dueAt,
+        slaTargetAt: dueAt,
+        source: 'recurring',
+        status: 'new',
+      },
+    });
+    await this.prisma.recurringRun.create({
+      data: { templateId: template.id, runKey, ticketId: ticket.id },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'ticket',
+      entityId: ticket.id,
+      action: 'recurring_run_now',
+      newValue: { templateId: template.id },
+    });
+    return ticket;
   }
 }

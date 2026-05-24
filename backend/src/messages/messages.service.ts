@@ -1,8 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, ForbiddenException, forwardRef } from '@nestjs/common';
 import { SessionUser } from '@ticketsystem/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RbacService } from '../rbac/rbac.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeService } from '../common/realtime/realtime.service';
+import { sanitizeHtml } from '../common/sanitize';
 import { CreateMessageDto, SendEmailDto } from './dto/message.dto';
 
 @Injectable()
@@ -11,6 +14,9 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly rbac: RbacService,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async create(ticketId: string, dto: CreateMessageDto, actor: SessionUser) {
@@ -22,12 +28,14 @@ export class MessagesService {
     if (!canAccess) throw new ForbiddenException();
 
     const isPublic = dto.kind === 'public_reply';
+    const body = sanitizeHtml(dto.body);
+
     const message = await this.prisma.ticketMessage.create({
       data: {
         ticketId,
         authorId: actor.id,
         kind: dto.kind,
-        body: dto.body,
+        body,
         isPublic,
         mentions: dto.mentionUserIds?.length
           ? {
@@ -56,7 +64,35 @@ export class MessagesService {
       newValue: { ticketId },
     });
 
+    this.realtime.emitTicketMessage(ticketId, message);
+
+    const recipientIds = await this.getRecipientIds(ticketId, actor.id);
+    const preview = body.replace(/<[^>]+>/g, '').slice(0, 200);
+    await this.notifications.notifyNewMessage(ticketId, recipientIds, preview);
+
+    if (dto.mentionUserIds?.length) {
+      for (const userId of dto.mentionUserIds) {
+        if (userId !== actor.id) {
+          await this.notifications.notifyMention(userId, ticketId, preview);
+        }
+      }
+    }
+
     return message;
+  }
+
+  private async getRecipientIds(ticketId: string, excludeUserId?: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { watchers: true },
+    });
+    if (!ticket) return [];
+    const ids = new Set<string>();
+    if (ticket.assigneeId) ids.add(ticket.assigneeId);
+    if (ticket.requesterId) ids.add(ticket.requesterId);
+    ticket.watchers.forEach((w) => ids.add(w.userId));
+    if (excludeUserId) ids.delete(excludeUserId);
+    return Array.from(ids);
   }
 
   async getTimeline(ticketId: string, actor: SessionUser, publicOnly = false) {
@@ -99,11 +135,13 @@ export class MessagesService {
     const ticket = await this.prisma.ticket.findUnique({ where: { id: params.ticketId } });
     if (!ticket) return null;
 
+    const body = sanitizeHtml(params.body);
+
     const message = await this.prisma.ticketMessage.create({
       data: {
         ticketId: params.ticketId,
         kind: 'public_reply',
-        body: params.body,
+        body,
         isPublic: true,
         source: params.source,
       },
@@ -140,16 +178,19 @@ export class MessagesService {
       source: params.source,
     });
 
+    this.realtime.emitTicketMessage(params.ticketId, message);
+
     return message;
   }
 
   async logOutboundEmail(ticketId: string, dto: SendEmailDto, actor: SessionUser) {
+    const body = sanitizeHtml(dto.body);
     const message = await this.prisma.ticketMessage.create({
       data: {
         ticketId,
         authorId: actor.id,
         kind: 'outbound_email',
-        body: `Email sent to ${dto.to.join(', ')}\nSubject: ${dto.subject}\n\n${dto.body}`,
+        body: `Email sent to ${dto.to.join(', ')}\nSubject: ${dto.subject}\n\n${body}`,
         isPublic: dto.isPublic ?? true,
       },
     });
@@ -162,7 +203,7 @@ export class MessagesService {
         toAddresses: dto.to,
         ccAddresses: dto.cc ?? [],
         subject: dto.subject,
-        bodyText: dto.body,
+        bodyText: body,
         direction: 'outbound',
       },
     });
@@ -174,6 +215,8 @@ export class MessagesService {
       action: 'email_sent',
       newValue: { to: dto.to, subject: dto.subject },
     });
+
+    this.realtime.emitTicketMessage(ticketId, message);
 
     return message;
   }

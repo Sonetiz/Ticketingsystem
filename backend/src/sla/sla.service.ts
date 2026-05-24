@@ -1,7 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { computeEscalationLevel, shouldReleaseHold } from './sla.engine';
+import { SlaRuleResolver } from './sla-rule.resolver';
+import { NotificationsService } from '../notifications/notifications.service';
+import { slaBreachCounter } from '../metrics/metrics.controller';
 
 @Injectable()
 export class SlaService {
@@ -10,13 +13,17 @@ export class SlaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly ruleResolver: SlaRuleResolver,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications?: NotificationsService,
   ) {}
 
   async evaluateAllTickets() {
     const tickets = await this.prisma.ticket.findMany({
       where: {
         deletedAt: null,
-        status: { notIn: ['closed', 'cancelled'] },
+        status: { notIn: ['closed', 'cancelled', 'on_hold'] },
         dueAt: { not: null },
       },
     });
@@ -33,9 +40,19 @@ export class SlaService {
           where: { id: ticket.id },
           data: { slaBreached: true, slaBreachedAt: new Date() },
         });
-        await this.prisma.slaBreachEvent.create({
+        const breachEvent = await this.prisma.slaBreachEvent.create({
           data: { ticketId: ticket.id, breachType: 'resolution' },
         });
+        slaBreachCounter.inc();
+        try {
+          await this.notifications?.notifySlaBreach(ticket.id);
+          await this.prisma.slaBreachEvent.update({
+            where: { id: breachEvent.id },
+            data: { notified: true },
+          });
+        } catch (err) {
+          this.logger.error('Failed to notify SLA breach', err);
+        }
         await this.audit.log({
           entityType: 'ticket',
           entityId: ticket.id,
@@ -48,10 +65,7 @@ export class SlaService {
       if (result.priority !== ticket.priority) {
         await this.prisma.ticket.update({
           where: { id: ticket.id },
-          data: {
-            priority: result.priority,
-            currentEscalationLevel: result.level,
-          },
+          data: { priority: result.priority, currentEscalationLevel: result.level },
         });
         await this.prisma.ticketPriorityHistory.create({
           data: {
@@ -62,14 +76,6 @@ export class SlaService {
             source: 'system_job',
           },
         });
-        await this.audit.log({
-          entityType: 'ticket',
-          entityId: ticket.id,
-          action: 'priority_escalated',
-          oldValue: { priority: ticket.priority },
-          newValue: { priority: result.priority, level: result.level },
-          source: 'system_job',
-        });
         escalated++;
       }
     }
@@ -79,10 +85,7 @@ export class SlaService {
 
   async releaseExpiredHolds() {
     const tickets = await this.prisma.ticket.findMany({
-      where: {
-        deletedAt: null,
-        holdUntil: { lte: new Date(), not: null },
-      },
+      where: { deletedAt: null, holdUntil: { lte: new Date(), not: null } },
     });
 
     let released = 0;
@@ -97,37 +100,32 @@ export class SlaService {
           status: ticket.status === 'on_hold' ? 'open' : ticket.status,
         },
       });
-      await this.prisma.ticketMessage.create({
-        data: {
-          ticketId: ticket.id,
-          kind: 'system',
-          body: 'Hold automatically released (hold-until date reached)',
-          isPublic: false,
-          source: 'system_job',
-        },
-      });
-      await this.audit.log({
-        entityType: 'ticket',
-        entityId: ticket.id,
-        action: 'hold_released',
-        newValue: { reason: 'hold_until_expired' },
-        source: 'system_job',
-      });
       released++;
     }
-    this.logger.log(`Hold release complete: ${released} tickets released`);
     return { released };
   }
 
-  calculateSlaTarget(priority: string, createdAt: Date): Date {
-    const hoursMap: Record<string, number> = {
-      critical: 4,
-      urgent: 8,
-      high: 24,
-      elevated: 48,
-      normal: 72,
-    };
-    const hours = hoursMap[priority] ?? 72;
-    return new Date(createdAt.getTime() + hours * 60 * 60 * 1000);
+  async calculateSlaTarget(
+    priority: string,
+    createdAt: Date,
+    categoryId?: string | null,
+    serviceId?: string | null,
+  ): Promise<Date> {
+    const { resolutionAt } = await this.ruleResolver.resolveTarget({
+      priority,
+      categoryId,
+      serviceId,
+      createdAt,
+    });
+    return resolutionAt;
+  }
+
+  async calculateSlaTargets(
+    priority: string,
+    createdAt: Date,
+    categoryId?: string | null,
+    serviceId?: string | null,
+  ) {
+    return this.ruleResolver.resolveTarget({ priority, categoryId, serviceId, createdAt });
   }
 }

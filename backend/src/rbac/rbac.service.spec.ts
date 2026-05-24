@@ -64,6 +64,16 @@ describe('RbacService', () => {
       expect(result).toBe(true);
     });
 
+    it('denies generic ticket.read without relationship', async () => {
+      const user = makeUser(['ticket.read']);
+      const result = await rbac.canAccessTicket(user, {
+        assigneeId: 'other-user',
+        assignedTeamId: 'other-team',
+        requesterId: 'another-user',
+      });
+      expect(result).toBe(false);
+    });
+
     it('allows team member access', async () => {
       const user = makeUser(['ticket.read']);
       const result = await rbac.canAccessTicket(user, {
