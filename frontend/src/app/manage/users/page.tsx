@@ -10,11 +10,19 @@ interface UserRow {
   email: string;
   name: string;
   isActive: boolean;
+  authProvider: string;
+  passwordLoginDisabled: boolean;
   roles: Array<{ role: { id: string; name: string; slug: string } }>;
   teamMemberships: Array<{ team: { id: string; name: string } }>;
 }
 
 interface Role { id: string; name: string; slug: string }
+
+const AUTH_PROVIDERS = [
+  { value: 'local', label: 'Local (password)' },
+  { value: 'entra', label: 'Microsoft Entra ID' },
+  { value: 'ldap', label: 'LDAP / Active Directory' },
+];
 
 export default function ManageUsersPage() {
   const queryClient = useQueryClient();
@@ -57,6 +65,7 @@ export default function ManageUsersPage() {
               <tr>
                 <th className="text-left p-3">Name</th>
                 <th className="text-left p-3">Email</th>
+                <th className="text-left p-3">Auth</th>
                 <th className="text-left p-3">Roles</th>
                 <th className="text-left p-3">Teams</th>
                 <th className="text-left p-3">Status</th>
@@ -68,6 +77,7 @@ export default function ManageUsersPage() {
                 <tr key={u.id} className="border-t">
                   <td className="p-3">{u.name}</td>
                   <td className="p-3">{u.email}</td>
+                  <td className="p-3 capitalize">{u.authProvider}</td>
                   <td className="p-3">{u.roles.map((r) => r.role.name).join(', ')}</td>
                   <td className="p-3">{u.teamMemberships.map((t) => t.team.name).join(', ') || '—'}</td>
                   <td className="p-3">{u.isActive ? 'Active' : 'Inactive'}</td>
@@ -80,6 +90,7 @@ export default function ManageUsersPage() {
       )}
 
       <UserFormModal
+        key={showCreate ? 'create' : 'closed'}
         open={showCreate}
         onClose={() => setShowCreate(false)}
         title="Add user"
@@ -91,11 +102,18 @@ export default function ManageUsersPage() {
 
       {editUser && (
         <UserFormModal
+          key={editUser.id}
           open={!!editUser}
           onClose={() => setEditUser(null)}
           title="Edit user"
           roles={roles || []}
-          initial={{ name: editUser.name, isActive: editUser.isActive, roleIds: editUser.roles.map((r) => r.role.id) }}
+          initial={{
+            name: editUser.name,
+            isActive: editUser.isActive,
+            roleIds: editUser.roles.map((r) => r.role.id),
+            authProvider: editUser.authProvider,
+            passwordLoginDisabled: editUser.passwordLoginDisabled,
+          }}
           onSubmit={(data) => updateMutation.mutate({ id: editUser.id, body: data })}
           loading={updateMutation.isPending}
           isEdit
@@ -109,7 +127,11 @@ function UserFormModal({
   open, onClose, title, roles, onSubmit, loading, initial, isEdit, ssoEnabled,
 }: {
   open: boolean; onClose: () => void; title: string; roles: Role[];
-  onSubmit: (data: object) => void; loading: boolean; initial?: { name: string; isActive: boolean; roleIds: string[] };
+  onSubmit: (data: object) => void; loading: boolean;
+  initial?: {
+    name: string; isActive: boolean; roleIds: string[];
+    authProvider: string; passwordLoginDisabled: boolean;
+  };
   isEdit?: boolean; ssoEnabled?: boolean;
 }) {
   const [name, setName] = useState(initial?.name || '');
@@ -117,6 +139,16 @@ function UserFormModal({
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [roleIds, setRoleIds] = useState<string[]>(initial?.roleIds || []);
+  const [authProvider, setAuthProvider] = useState(initial?.authProvider || 'local');
+  const [passwordLoginDisabled, setPasswordLoginDisabled] = useState(
+    initial?.passwordLoginDisabled ?? false,
+  );
+
+  const isLocal = authProvider === 'local';
+
+  useEffect(() => {
+    if (!isLocal) setPasswordLoginDisabled(true);
+  }, [isLocal]);
 
   const toggleRole = (id: string) => {
     setRoleIds((prev) => prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]);
@@ -125,9 +157,16 @@ function UserFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isEdit) {
-      onSubmit({ name, isActive, roleIds });
+      onSubmit({ name, isActive, roleIds, authProvider, passwordLoginDisabled: isLocal ? passwordLoginDisabled : true });
     } else {
-      onSubmit({ name, email, password: password || undefined, roleIds });
+      onSubmit({
+        name,
+        email,
+        password: isLocal ? password || undefined : undefined,
+        roleIds,
+        authProvider,
+        passwordLoginDisabled: isLocal ? passwordLoginDisabled : true,
+      });
     }
   };
 
@@ -136,13 +175,31 @@ function UserFormModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div><FieldLabel>Name</FieldLabel><TextInput value={name} onChange={(e) => setName(e.target.value)} required /></div>
         {!isEdit && (
-          <>
-            <div><FieldLabel>Email</FieldLabel><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-            <div>
-              <FieldLabel>Password {ssoEnabled ? '(optional for SSO users)' : ''}</FieldLabel>
-              <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} required={!ssoEnabled} />
-            </div>
-          </>
+          <div><FieldLabel>Email</FieldLabel><TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+        )}
+        <div>
+          <FieldLabel>Auth provider</FieldLabel>
+          <SelectInput value={authProvider} onChange={(e) => setAuthProvider(e.target.value)}>
+            {AUTH_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </SelectInput>
+        </div>
+        {isLocal && !isEdit && (
+          <div>
+            <FieldLabel>Password {ssoEnabled ? '(optional if using SSO elsewhere)' : ''}</FieldLabel>
+            <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} required={!passwordLoginDisabled} />
+          </div>
+        )}
+        {isLocal && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={passwordLoginDisabled}
+              onChange={(e) => setPasswordLoginDisabled(e.target.checked)}
+            />
+            Disable password login
+          </label>
         )}
         {isEdit && (
           <label className="flex items-center gap-2 text-sm">

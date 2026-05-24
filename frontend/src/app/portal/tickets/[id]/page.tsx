@@ -204,6 +204,44 @@ export default function TicketDetailPage() {
       <div className="space-y-4">
         <div className="bg-card rounded-xl border border-border p-4 space-y-3">
           <h3 className="font-semibold">Controls</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {ticket.status !== 'resolved' && ticket.status !== 'closed' && ticket.status !== 'cancelled' && (
+              <button
+                onClick={() => statusMutation.mutate('resolved')}
+                disabled={statusMutation.isPending}
+                className="col-span-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                Resolve ticket
+              </button>
+            )}
+            {ticket.status === 'resolved' && (
+              <>
+                <button
+                  onClick={() => statusMutation.mutate('closed')}
+                  disabled={statusMutation.isPending}
+                  className="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => statusMutation.mutate('open')}
+                  disabled={statusMutation.isPending}
+                  className="px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted disabled:opacity-50"
+                >
+                  Reopen
+                </button>
+              </>
+            )}
+            {(ticket.status === 'closed' || ticket.status === 'cancelled') && (
+              <button
+                onClick={() => statusMutation.mutate('open')}
+                disabled={statusMutation.isPending}
+                className="col-span-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted disabled:opacity-50"
+              >
+                Reopen
+              </button>
+            )}
+          </div>
           <div>
             <label className="text-xs text-muted-foreground">Status</label>
             <select

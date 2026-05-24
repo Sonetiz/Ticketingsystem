@@ -10,6 +10,7 @@ import { createHash, randomBytes, createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
 import { AuditService } from '../audit/audit.service';
+import { LdapService } from './ldap.service';
 import { SessionUser } from '@ticketsystem/shared';
 
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly rbac: RbacService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly ldap: LdapService,
   ) {}
 
   isSsoEnabled(): boolean {
@@ -35,7 +37,7 @@ export class AuthService {
   }
 
   getAuthConfig() {
-    return { ssoEnabled: this.isSsoEnabled() };
+    return { ssoEnabled: this.isSsoEnabled(), ldapEnabled: this.ldap.isEnabled() };
   }
 
   getMicrosoftAuthUrl(returnTo: string): string {
@@ -158,10 +160,22 @@ export class AuthService {
   }
 
   async validateUser(email: string, password: string): Promise<SessionUser | null> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findFirst({
       where: { email: email.toLowerCase(), deletedAt: null },
     });
-    if (!user || !user.passwordHash || !user.isActive) return null;
+    if (!user || !user.isActive) return null;
+
+    if (user.authProvider === 'entra') return null;
+
+    if (user.authProvider === 'ldap') {
+      if (!this.ldap.isEnabled()) return null;
+      const ok = await this.ldap.bind(user.email, password);
+      return ok ? this.rbac.buildSessionUser(user.id) : null;
+    }
+
+    if (user.passwordLoginDisabled) return null;
+    if (!user.passwordHash) return null;
+
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return null;
     return this.rbac.buildSessionUser(user.id);

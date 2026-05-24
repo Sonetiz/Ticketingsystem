@@ -12,6 +12,7 @@ export default function ManageOverviewPage() {
     { href: '/manage/integrations', title: 'Integrations', desc: 'Email and Microsoft Teams connector settings' },
     { href: '/manage/templates', title: 'Templates', desc: 'Project and notification templates' },
     { href: '/manage/api-tokens', title: 'API Tokens', desc: 'Manage integration API tokens' },
+    { href: '/manage/settings', title: 'System Settings', desc: 'Global key/value configuration' },
     { href: '/manage/audit', title: 'Audit Log', desc: 'View system audit trail' },
   ];
 

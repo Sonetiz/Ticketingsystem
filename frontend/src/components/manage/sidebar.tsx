@@ -12,6 +12,7 @@ import {
   Key,
   ScrollText,
   LogOut,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/api';
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/manage/integrations', label: 'Integrations', icon: Plug },
   { href: '/manage/templates', label: 'Templates', icon: FileText },
   { href: '/manage/api-tokens', label: 'API Tokens', icon: Key },
+  { href: '/manage/settings', label: 'Settings', icon: SlidersHorizontal },
   { href: '/manage/audit', label: 'Audit Log', icon: ScrollText },
 ];
 

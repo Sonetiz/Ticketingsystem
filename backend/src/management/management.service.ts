@@ -1,9 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
-import { SessionUser } from '@ticketsystem/shared';
+import { SessionUser, ROLES } from '@ticketsystem/shared';
+
+const PROTECTED_ROLE_SLUGS = new Set<string>([
+  ROLES.SUPER_ADMIN,
+  ROLES.SYSTEM_ADMIN,
+  ROLES.AGENT,
+  ROLES.REQUESTER,
+]);
 
 @Injectable()
 export class ManagementService {
@@ -22,6 +29,8 @@ export class ManagementService {
         email: true,
         name: true,
         isActive: true,
+        authProvider: true,
+        passwordLoginDisabled: true,
         createdAt: true,
         roles: { include: { role: true } },
         teamMemberships: { include: { team: true } },
@@ -30,14 +39,23 @@ export class ManagementService {
     });
   }
 
-  async createUser(data: { email: string; name: string; password?: string; roleIds?: string[] }) {
+  async createUser(data: {
+    email: string;
+    name: string;
+    password?: string;
+    roleIds?: string[];
+    authProvider?: string;
+    passwordLoginDisabled?: boolean;
+  }) {
+    const authProvider = data.authProvider || (data.password ? 'local' : 'entra');
     const passwordHash = data.password ? await bcrypt.hash(data.password, 12) : null;
     const user = await this.prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
         name: data.name,
         passwordHash,
-        authProvider: passwordHash ? 'local' : 'entra',
+        authProvider,
+        passwordLoginDisabled: data.passwordLoginDisabled ?? authProvider !== 'local',
         roles: data.roleIds?.length
           ? { create: data.roleIds.map((roleId) => ({ roleId })) }
           : undefined,
@@ -46,7 +64,17 @@ export class ManagementService {
     return user;
   }
 
-  async updateUser(id: string, data: { name?: string; isActive?: boolean; roleIds?: string[] }, actor: SessionUser) {
+  async updateUser(
+    id: string,
+    data: {
+      name?: string;
+      isActive?: boolean;
+      roleIds?: string[];
+      authProvider?: string;
+      passwordLoginDisabled?: boolean;
+    },
+    actor: SessionUser,
+  ) {
     if (data.roleIds) {
       await this.prisma.userRole.deleteMany({ where: { userId: id } });
       await this.prisma.userRole.createMany({
@@ -55,7 +83,12 @@ export class ManagementService {
     }
     const user = await this.prisma.user.update({
       where: { id },
-      data: { name: data.name, isActive: data.isActive },
+      data: {
+        name: data.name,
+        isActive: data.isActive,
+        authProvider: data.authProvider,
+        passwordLoginDisabled: data.passwordLoginDisabled,
+      },
     });
     await this.audit.log({
       actorId: actor.id,
@@ -76,6 +109,65 @@ export class ManagementService {
 
   async listPermissions() {
     return this.prisma.permission.findMany({ orderBy: { slug: 'asc' } });
+  }
+
+  async createRole(data: { slug: string; name: string; description?: string }) {
+    return this.prisma.role.create({ data });
+  }
+
+  async updateRole(id: string, data: { name?: string; description?: string }, actor: SessionUser) {
+    const role = await this.prisma.role.update({ where: { id }, data });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'role',
+      entityId: id,
+      action: 'updated',
+      newValue: data,
+    });
+    return role;
+  }
+
+  async deleteRole(id: string, actor: SessionUser) {
+    const role = await this.prisma.role.findUnique({ where: { id } });
+    if (!role) throw new NotFoundException('Role not found');
+    if (PROTECTED_ROLE_SLUGS.has(role.slug)) {
+      throw new BadRequestException('Cannot delete built-in role');
+    }
+    const userCount = await this.prisma.userRole.count({ where: { roleId: id } });
+    if (userCount > 0) {
+      throw new ConflictException('Role is assigned to users');
+    }
+    await this.prisma.rolePermission.deleteMany({ where: { roleId: id } });
+    await this.prisma.role.delete({ where: { id } });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'role',
+      entityId: id,
+      action: 'deleted',
+    });
+    return { success: true };
+  }
+
+  async setRolePermissions(roleId: string, permissionIds: string[], actor: SessionUser) {
+    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
+    if (!role) throw new NotFoundException('Role not found');
+    await this.prisma.rolePermission.deleteMany({ where: { roleId } });
+    if (permissionIds.length) {
+      await this.prisma.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({ roleId, permissionId })),
+      });
+    }
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'role',
+      entityId: roleId,
+      action: 'permissions_updated',
+      newValue: { permissionIds },
+    });
+    return this.prisma.role.findUnique({
+      where: { id: roleId },
+      include: { permissions: { include: { permission: true } } },
+    });
   }
 
   // Teams
@@ -136,7 +228,15 @@ export class ManagementService {
     return this.prisma.statusDefinition.findMany({ orderBy: { sortOrder: 'asc' } });
   }
 
-  async upsertStatus(data: { slug: string; name: string; sortOrder?: number; isClosed?: boolean; isHold?: boolean; color?: string }) {
+  async upsertStatus(data: {
+    slug: string;
+    name: string;
+    sortOrder?: number;
+    isClosed?: boolean;
+    isHold?: boolean;
+    isActive?: boolean;
+    color?: string;
+  }) {
     return this.prisma.statusDefinition.upsert({
       where: { slug: data.slug },
       create: data,
@@ -144,8 +244,39 @@ export class ManagementService {
     });
   }
 
+  async deleteStatus(slug: string) {
+    const ticketCount = await this.prisma.ticket.count({ where: { status: slug } });
+    if (ticketCount > 0) {
+      throw new ConflictException('Status is in use by tickets');
+    }
+    await this.prisma.statusDefinition.delete({ where: { slug } });
+    return { success: true };
+  }
+
   async listPriorities() {
     return this.prisma.priorityDefinition.findMany({ orderBy: { sortOrder: 'asc' } });
+  }
+
+  async upsertPriority(data: {
+    slug: string;
+    name: string;
+    sortOrder?: number;
+    color?: string;
+  }) {
+    return this.prisma.priorityDefinition.upsert({
+      where: { slug: data.slug },
+      create: data,
+      update: data,
+    });
+  }
+
+  async deletePriority(slug: string) {
+    const ticketCount = await this.prisma.ticket.count({ where: { priority: slug } });
+    if (ticketCount > 0) {
+      throw new ConflictException('Priority is in use by tickets');
+    }
+    await this.prisma.priorityDefinition.delete({ where: { slug } });
+    return { success: true };
   }
 
   // SLA Rules
@@ -163,8 +294,45 @@ export class ManagementService {
     responseMinutes?: number;
     resolutionMinutes?: number;
     escalationThresholds?: object;
+    isActive?: boolean;
   }) {
     return this.prisma.slaRule.create({ data });
+  }
+
+  async updateSlaRule(
+    id: string,
+    data: {
+      name?: string;
+      priority?: string;
+      categoryId?: string | null;
+      serviceId?: string | null;
+      responseMinutes?: number;
+      resolutionMinutes?: number;
+      escalationThresholds?: object;
+      isActive?: boolean;
+    },
+    actor: SessionUser,
+  ) {
+    const rule = await this.prisma.slaRule.update({ where: { id }, data });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'sla_rule',
+      entityId: id,
+      action: 'updated',
+      newValue: data,
+    });
+    return rule;
+  }
+
+  async deleteSlaRule(id: string, actor: SessionUser) {
+    await this.prisma.slaRule.delete({ where: { id } });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'sla_rule',
+      entityId: id,
+      action: 'deleted',
+    });
+    return { success: true };
   }
 
   // Integration settings
@@ -172,15 +340,86 @@ export class ManagementService {
     return this.prisma.integrationSetting.findMany();
   }
 
-  async upsertIntegrationSetting(connector: string, config: object) {
+  async upsertIntegrationSetting(connector: string, body: { config?: object; isActive?: boolean }) {
+    const existing = await this.prisma.integrationSetting.findUnique({ where: { connector } });
+    const config = body.config ?? (existing?.config as object) ?? {};
+    const isActive = body.isActive ?? existing?.isActive ?? true;
     return this.prisma.integrationSetting.upsert({
       where: { connector },
-      create: { connector, config },
-      update: { config },
+      create: { connector, config, isActive },
+      update: { config, isActive },
     });
   }
 
   // Templates
+  async createProjectTemplate(data: {
+    name: string;
+    description?: string;
+    tickets?: Array<{ title: string; description?: string; priority?: string; sortOrder?: number }>;
+  }) {
+    return this.prisma.projectTemplate.create({
+      data: {
+        name: data.name,
+        description: data.description,
+        tickets: data.tickets?.length
+          ? { create: data.tickets.map((t, i) => ({ ...t, sortOrder: t.sortOrder ?? i })) }
+          : undefined,
+      },
+      include: { tickets: { orderBy: { sortOrder: 'asc' } } },
+    });
+  }
+
+  async updateProjectTemplate(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      tickets?: Array<{ title: string; description?: string; priority?: string; sortOrder?: number }>;
+    },
+  ) {
+    if (data.tickets) {
+      await this.prisma.projectTemplateTicket.deleteMany({ where: { templateId: id } });
+    }
+    return this.prisma.projectTemplate.update({
+      where: { id },
+      data: {
+        name: data.name,
+        description: data.description,
+        tickets: data.tickets
+          ? { create: data.tickets.map((t, i) => ({ ...t, sortOrder: t.sortOrder ?? i })) }
+          : undefined,
+      },
+      include: { tickets: { orderBy: { sortOrder: 'asc' } } },
+    });
+  }
+
+  async deleteProjectTemplate(id: string) {
+    await this.prisma.projectTemplate.delete({ where: { id } });
+    return { success: true };
+  }
+
+  async createNotificationTemplate(data: {
+    slug: string;
+    name: string;
+    subject?: string;
+    body: string;
+    channel: string;
+  }) {
+    return this.prisma.notificationTemplate.create({ data });
+  }
+
+  async updateNotificationTemplate(
+    id: string,
+    data: { slug?: string; name?: string; subject?: string; body?: string; channel?: string },
+  ) {
+    return this.prisma.notificationTemplate.update({ where: { id }, data });
+  }
+
+  async deleteNotificationTemplate(id: string) {
+    await this.prisma.notificationTemplate.delete({ where: { id } });
+    return { success: true };
+  }
+
   async listProjectTemplates() {
     return this.prisma.projectTemplate.findMany({
       include: { tickets: { orderBy: { sortOrder: 'asc' } } },
@@ -207,13 +446,25 @@ export class ManagementService {
 
   // API tokens
   async createApiToken(userId: string, name: string, permissions: string[], actor: SessionUser) {
-    return this.auth.createApiToken(userId, name, permissions);
+    const token = await this.auth.createApiToken(userId, name, permissions);
+    return { token };
   }
 
   async listApiTokens() {
     return this.prisma.apiToken.findMany({
       select: { id: true, name: true, userId: true, permissions: true, lastUsedAt: true, expiresAt: true, createdAt: true },
     });
+  }
+
+  async revokeApiToken(id: string, actor: SessionUser) {
+    await this.prisma.apiToken.delete({ where: { id } });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'api_token',
+      entityId: id,
+      action: 'revoked',
+    });
+    return { success: true };
   }
 
   // System settings
@@ -227,5 +478,16 @@ export class ManagementService {
       create: { key, value },
       update: { value },
     });
+  }
+
+  async deleteSystemSetting(key: string, actor: SessionUser) {
+    await this.prisma.systemSetting.delete({ where: { key } });
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'system_setting',
+      entityId: key,
+      action: 'deleted',
+    });
+    return { success: true };
   }
 }

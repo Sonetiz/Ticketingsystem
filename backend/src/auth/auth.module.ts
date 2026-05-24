@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { LdapService } from './ldap.service';
 import { AuthController } from './auth.controller';
 import {
   SessionAuthGuard,
@@ -14,6 +15,7 @@ import {
 @Module({
   providers: [
     AuthService,
+    LdapService,
     SessionAuthGuard,
     OptionalSessionAuthGuard,
     ApiTokenAuthGuard,

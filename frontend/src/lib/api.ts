@@ -59,7 +59,7 @@ export async function getMe() {
 }
 
 export async function getAuthConfig() {
-  return api<{ ssoEnabled: boolean }>('/auth/config');
+  return api<{ ssoEnabled: boolean; ldapEnabled: boolean }>('/auth/config');
 }
 
 export function getMicrosoftLoginUrl(returnTo: string) {
