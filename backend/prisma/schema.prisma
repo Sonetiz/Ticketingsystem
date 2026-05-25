@@ -41,6 +41,22 @@ model User {
   passwordResetTokens PasswordResetToken[]
   worklogEntries     WorklogEntry[]
   approvalApprovers  ApprovalRequestApprover[]
+
+  // Employee / CMDB fields
+  jobTitle       String?
+  department     String?
+  location       String?
+  phone          String?
+  employeeNumber String? @unique
+  managerId      String?
+  manager        User?   @relation("UserManager", fields: [managerId], references: [id])
+  reports        User[]  @relation("UserManager")
+
+  ownedAssets        Asset[] @relation("AssetOwner")
+  primaryUserAssets  Asset[] @relation("AssetPrimaryUser")
+
+  @@index([department])
+  @@index([managerId])
 }
 
 model Role {
@@ -289,6 +305,7 @@ model Ticket {
   approvalRequests   ApprovalRequest[]
   worklogEntries     WorklogEntry[]
   problemRecord      ProblemRecord?
+  linkedAssets       TicketAsset[]
 
   @@index([status])
   @@index([priority])
@@ -742,17 +759,135 @@ model CustomFieldValue {
 }
 
 model Asset {
-  id          String    @id @default(uuid())
-  name        String
-  assetType   String
-  identifier  String?
-  serviceId   String?
-  metadata    Json?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  name           String
+  assetType      String
+  identifier     String?
+  serviceId      String?
+  ownerId        String?
+  primaryUserId  String?
+  status         String    @default("in_use")
+  lifecycleStage String    @default("deployed")
+  location       String?
+  vendor         String?
+  model          String?
+  serialNumber   String?
+  cost           Decimal?  @db.Decimal(12, 2)
+  purchaseDate   DateTime?
+  purchaseOrder  String?
+  warrantyEndsAt DateTime?
+  retiredAt      DateTime?
+  notes          String?   @db.Text
+  metadata       Json?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  service Service? @relation(fields: [serviceId], references: [id])
+  service     Service? @relation(fields: [serviceId], references: [id])
+  owner       User?    @relation("AssetOwner", fields: [ownerId], references: [id])
+  primaryUser User?    @relation("AssetPrimaryUser", fields: [primaryUserId], references: [id])
+
+  parentRelationships AssetRelationship[] @relation("AssetParent")
+  childRelationships  AssetRelationship[] @relation("AssetChild")
+  software            AssetSoftware[]
+  linkedTickets       TicketAsset[]
+  linkedChanges       ChangeAsset[]
+  linkedProblems      ProblemAsset[]
+
+  @@index([ownerId])
+  @@index([primaryUserId])
+  @@index([status])
+  @@index([lifecycleStage])
+  @@index([serialNumber])
+}
+
+model AssetRelationship {
+  id            String   @id @default(uuid())
+  parentAssetId String
+  childAssetId  String
+  relationType  String
+  createdAt     DateTime @default(now())
+
+  parentAsset Asset @relation("AssetParent", fields: [parentAssetId], references: [id], onDelete: Cascade)
+  childAsset  Asset @relation("AssetChild", fields: [childAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([parentAssetId, childAssetId, relationType])
+  @@index([parentAssetId])
+  @@index([childAssetId])
+}
+
+model TicketAsset {
+  ticketId  String
+  assetId   String
+  relation  String   @default("affected")
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  asset  Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, assetId])
+  @@index([assetId])
+}
+
+model ChangeAsset {
+  changeRequestId String
+  assetId         String
+  relation        String   @default("impacted")
+  createdAt       DateTime @default(now())
+
+  changeRequest ChangeRequest @relation(fields: [changeRequestId], references: [id], onDelete: Cascade)
+  asset         Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([changeRequestId, assetId])
+  @@index([assetId])
+}
+
+model ProblemAsset {
+  problemRecordId String
+  assetId         String
+  relation        String   @default("affected")
+  createdAt       DateTime @default(now())
+
+  problemRecord ProblemRecord @relation(fields: [problemRecordId], references: [id], onDelete: Cascade)
+  asset         Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([problemRecordId, assetId])
+  @@index([assetId])
+}
+
+model SoftwareLicense {
+  id           String    @id @default(uuid())
+  name         String
+  vendor       String?
+  licenseKey   String?
+  seatsTotal   Int       @default(1)
+  purchaseDate DateTime?
+  expiryDate   DateTime?
+  renewalCost  Decimal?  @db.Decimal(12, 2)
+  notes        String?   @db.Text
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  installations AssetSoftware[]
+
+  @@index([name])
+}
+
+model AssetSoftware {
+  assetId           String
+  softwareLicenseId String
+  seatsUsed         Int       @default(1)
+  version           String?
+  installedAt       DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+
+  asset           Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  softwareLicense SoftwareLicense @relation(fields: [softwareLicenseId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, softwareLicenseId])
+  @@index([softwareLicenseId])
 }
 
 model ChangeRequest {
@@ -772,6 +907,7 @@ model ChangeRequest {
   updatedAt           DateTime  @updatedAt
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  linkedAssets ChangeAsset[]
 }
 
 model FreezeWindow {
@@ -796,6 +932,7 @@ model ProblemRecord {
   updatedAt       DateTime  @updatedAt
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  linkedAssets ProblemAsset[]
 }
 
 model WorklogEntry {

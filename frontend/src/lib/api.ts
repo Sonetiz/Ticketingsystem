@@ -154,31 +154,49 @@ export interface TicketDetail {
     fromTicket?: { id: string; number: number; title: string };
   }>;
   tags?: Array<{ id: string; tag: string }>;
+  assets?: AssetSummary[];
 }
 
-export interface TicketWatcher {
+export interface AssetSummary {
   id: string;
-  userId: string;
-  user: { id: string; name: string };
+  name: string;
+  assetType: string;
+  identifier?: string | null;
+  status?: string;
+  lifecycleStage?: string;
+  location?: string | null;
+  serialNumber?: string | null;
+  relation?: string;
 }
 
-export interface NotificationItem {
+export interface UserSummary {
   id: string;
-  title: string;
-  body: string;
-  readAt: string | null;
-  createdAt: string;
-  payload?: { ticketId?: string } | null;
+  name: string;
+  email: string;
+  department?: string | null;
+  jobTitle?: string | null;
 }
 
-export interface KnowledgeArticle {
+export interface AssetRelationship {
   id: string;
-  title: string;
-  slug: string;
-  content: string;
-  category?: string | null;
-  isPublic: boolean;
-  updatedAt: string;
+  relationType: string;
+  parentAsset?: AssetSummary;
+  childAsset?: AssetSummary;
+}
+
+export interface AssetSoftwareInstall {
+  assetId: string;
+  softwareLicenseId: string;
+  seatsUsed: number;
+  version?: string | null;
+  installedAt?: string | null;
+  softwareLicense: {
+    id: string;
+    name: string;
+    vendor?: string | null;
+    seatsTotal: number;
+    expiryDate?: string | null;
+  };
 }
 
 export interface AssetItem {
@@ -187,8 +205,42 @@ export interface AssetItem {
   assetType: string;
   identifier?: string | null;
   serviceId?: string | null;
+  ownerId?: string | null;
+  primaryUserId?: string | null;
+  status: string;
+  lifecycleStage: string;
+  location?: string | null;
+  vendor?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  cost?: string | null;
+  purchaseDate?: string | null;
+  purchaseOrder?: string | null;
+  warrantyEndsAt?: string | null;
+  retiredAt?: string | null;
+  notes?: string | null;
   metadata?: Record<string, unknown> | null;
   updatedAt: string;
+  createdAt?: string;
+  owner?: UserSummary | null;
+  primaryUser?: UserSummary | null;
+  service?: { id: string; name: string; slug: string } | null;
+  parentRelationships?: Array<{ id: string; relationType: string; parentAsset: AssetSummary }>;
+  childRelationships?: Array<{ id: string; relationType: string; childAsset: AssetSummary }>;
+  software?: AssetSoftwareInstall[];
+  linkedTickets?: Array<{ relation: string; ticket: { id: string; number: number; title: string; status: string } }>;
+  linkedChanges?: Array<{ relation: string; changeRequest: { id: string; status: string; ticket: { id: string; number: number; title: string } } }>;
+  linkedProblems?: Array<{ relation: string; problemRecord: { id: string; title: string; status: string; ticket: { id: string; number: number } } }>;
+}
+
+export interface AssetListFilters {
+  assetType?: string;
+  serviceId?: string;
+  ownerId?: string;
+  primaryUserId?: string;
+  status?: string;
+  lifecycleStage?: string;
+  q?: string;
 }
 
 export interface KnowledgeArticlePayload {
@@ -204,19 +256,86 @@ export interface AssetPayload {
   assetType: string;
   identifier?: string | null;
   serviceId?: string | null;
+  ownerId?: string | null;
+  primaryUserId?: string | null;
+  status?: string;
+  lifecycleStage?: string;
+  location?: string | null;
+  vendor?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  cost?: number | null;
+  purchaseDate?: string | null;
+  purchaseOrder?: string | null;
+  warrantyEndsAt?: string | null;
+  retiredAt?: string | null;
+  notes?: string | null;
   metadata?: Record<string, unknown>;
 }
 
+export interface SoftwareLicense {
+  id: string;
+  name: string;
+  vendor?: string | null;
+  licenseKey?: string | null;
+  seatsTotal: number;
+  seatsUsed?: number;
+  seatsAvailable?: number;
+  purchaseDate?: string | null;
+  expiryDate?: string | null;
+  renewalCost?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  installations?: Array<{
+    assetId: string;
+    seatsUsed: number;
+    version?: string | null;
+    asset: { id: string; name: string; assetType: string; identifier?: string | null };
+  }>;
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
 export interface SearchResultItem {
-  type: 'ticket' | 'kb' | 'asset';
+  type: 'ticket' | 'kb' | 'asset' | 'software';
   id: string;
   title: string;
   subtitle?: string;
   href: string;
 }
-
 export interface GlobalSearchResult {
   results: SearchResultItem[];
+}
+
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  category?: string | null;
+  isPublic: boolean;
+  updatedAt: string;
+}
+
+export interface TicketWatcher {
+  id: string;
+  userId: string;
+  user: { id: string; name: string };
+}
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  payload?: { ticketId?: string } | null;
 }
 
 function toQueryString(filters: Record<string, string | number | boolean | undefined>) {
@@ -258,6 +377,53 @@ export const tickets = {
 
   bulkClose: (ids: string[]) =>
     api('/tickets/bulk/close', { method: 'POST', body: JSON.stringify({ ids }) }),
+
+  listAssets: (ticketId: string) => api<AssetSummary[]>(`/tickets/${ticketId}/assets`),
+
+  linkAsset: (ticketId: string, assetId: string, relation?: string) =>
+    api(`/tickets/${ticketId}/assets`, {
+      method: 'POST',
+      body: JSON.stringify({ assetId, relation }),
+    }),
+
+  unlinkAsset: (ticketId: string, assetId: string) =>
+    api(`/tickets/${ticketId}/assets/${assetId}`, { method: 'DELETE' }),
+};
+
+export const changes = {
+  get: (id: string) => api<{ id: string; assets?: AssetSummary[] } & Record<string, unknown>>(`/changes/${id}`),
+  listAssets: (changeId: string) => api<AssetSummary[]>(`/changes/${changeId}/assets`),
+  linkAsset: (changeId: string, assetId: string, relation?: string) =>
+    api(`/changes/${changeId}/assets`, {
+      method: 'POST',
+      body: JSON.stringify({ assetId, relation }),
+    }),
+  unlinkAsset: (changeId: string, assetId: string) =>
+    api(`/changes/${changeId}/assets/${assetId}`, { method: 'DELETE' }),
+};
+
+export interface ProblemDetail {
+  id: string;
+  title: string;
+  status: string;
+  rootCause?: string | null;
+  workaround?: string | null;
+  isKnownError: boolean;
+  updatedAt: string;
+  assets?: AssetSummary[];
+  ticket: { id: string; number: number; title: string; status: string };
+}
+
+export const problems = {
+  get: (id: string) => api<ProblemDetail>(`/problems/${id}`),
+  listAssets: (problemId: string) => api<AssetSummary[]>(`/problems/${problemId}/assets`),
+  linkAsset: (problemId: string, assetId: string, relation?: string) =>
+    api(`/problems/${problemId}/assets`, {
+      method: 'POST',
+      body: JSON.stringify({ assetId, relation }),
+    }),
+  unlinkAsset: (problemId: string, assetId: string) =>
+    api(`/problems/${problemId}/assets/${assetId}`, { method: 'DELETE' }),
 };
 
 export const attachments = {
@@ -292,18 +458,101 @@ export const kb = {
     }),
 };
 
+export const employees = {
+  list: (filters: { q?: string; department?: string } = {}) =>
+    api<UserSummary[]>(`/lookups/employees${toQueryString(filters)}`),
+};
+
 export const assets = {
-  list: () => api<AssetItem[]>('/assets'),
+  list: (filters: AssetListFilters = {}) =>
+    api<AssetItem[]>(`/assets${toQueryString(filters as Record<string, string | number | boolean | undefined>)}`),
+
+  get: (id: string) => api<AssetItem>(`/assets/${id}`),
+
   create: (data: AssetPayload) =>
     api<AssetItem>('/assets', {
       method: 'POST',
       body: JSON.stringify(data),
       headers: { 'X-CSRF-Token': getCsrfToken() || '' },
     }),
+
   update: (id: string, data: AssetPayload) =>
     api<AssetItem>(`/assets/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  remove: (id: string) =>
+    api(`/assets/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  addRelationship: (
+    id: string,
+    data: { targetAssetId: string; relationType: string; direction: 'downstream' | 'upstream' },
+  ) =>
+    api(`/assets/${id}/relationships`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  removeRelationship: (id: string, relId: string) =>
+    api(`/assets/${id}/relationships/${relId}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  installSoftware: (id: string, data: { softwareLicenseId: string; seatsUsed?: number; version?: string }) =>
+    api(`/assets/${id}/software`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  uninstallSoftware: (id: string, licenseId: string) =>
+    api(`/assets/${id}/software/${licenseId}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+
+  importCsv: async (file: File, dryRun = false): Promise<ImportResult> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/assets/import?dryRun=${dryRun}`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || 'Import failed');
+    }
+    return res.json();
+  },
+};
+
+export const software = {
+  list: () => api<SoftwareLicense[]>('/software'),
+  get: (id: string) => api<SoftwareLicense>(`/software/${id}`),
+  create: (data: Partial<SoftwareLicense>) =>
+    api<SoftwareLicense>('/software', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+  update: (id: string, data: Partial<SoftwareLicense>) =>
+    api<SoftwareLicense>(`/software/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+    }),
+  remove: (id: string, force = false) =>
+    api(`/software/${id}${force ? '?force=true' : ''}`, {
+      method: 'DELETE',
       headers: { 'X-CSRF-Token': getCsrfToken() || '' },
     }),
 };

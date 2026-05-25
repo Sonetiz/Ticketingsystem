@@ -20,6 +20,7 @@ import { RealtimeService } from '../common/realtime/realtime.service';
 import { sanitizeHtml, sanitizePlain } from '../common/sanitize';
 import { isFtsAvailable } from '../common/fts';
 import { CsatService } from '../csat/csat.service';
+import { AssetsService } from '../assets/assets.service';
 
 @Injectable()
 export class TicketsService {
@@ -35,6 +36,7 @@ export class TicketsService {
     private readonly realtime: RealtimeService,
     @Inject(forwardRef(() => CsatService))
     private readonly csat: CsatService,
+    private readonly assets: AssetsService,
   ) {}
 
   async create(dto: CreateTicketDto, actor: SessionUser | null, source = 'admin') {
@@ -212,6 +214,22 @@ export class TicketsService {
         linksFrom: { include: { toTicket: { select: { id: true, number: true, title: true } } } },
         linksTo: { include: { fromTicket: { select: { id: true, number: true, title: true } } } },
         externalContacts: true,
+        linkedAssets: {
+          include: {
+            asset: {
+              select: {
+                id: true,
+                name: true,
+                assetType: true,
+                identifier: true,
+                status: true,
+                lifecycleStage: true,
+                location: true,
+                serialNumber: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
@@ -222,6 +240,7 @@ export class TicketsService {
       ...ticket,
       isOnHold: isTicketOnHold(ticket),
       isActiveQueue: isActiveQueueTicket(ticket),
+      assets: ticket.linkedAssets.map((la) => ({ ...la.asset, relation: la.relation })),
     };
   }
 
@@ -534,6 +553,26 @@ export class TicketsService {
       where: { parentTicketId: ticketId, deletedAt: null },
       include: this.ticketInclude(),
     });
+  }
+
+  async getTicketAssets(ticketId: string, actor: SessionUser) {
+    await this.getTicketOrThrow(ticketId, actor);
+    return this.assets.getTicketAssets(ticketId);
+  }
+
+  async linkTicketAsset(
+    ticketId: string,
+    assetId: string,
+    relation: string | undefined,
+    actor: SessionUser,
+  ) {
+    await this.getTicketOrThrow(ticketId, actor);
+    return this.assets.linkTicketAsset(ticketId, assetId, relation);
+  }
+
+  async unlinkTicketAsset(ticketId: string, assetId: string, actor: SessionUser) {
+    await this.getTicketOrThrow(ticketId, actor);
+    return this.assets.unlinkTicketAsset(ticketId, assetId);
   }
 
   async bulkAssign(ids: string[], dto: AssignTicketDto, actor: SessionUser) {

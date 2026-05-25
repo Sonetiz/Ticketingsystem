@@ -31,6 +31,13 @@ export class ManagementService {
         isActive: true,
         authProvider: true,
         passwordLoginDisabled: true,
+        jobTitle: true,
+        department: true,
+        location: true,
+        phone: true,
+        employeeNumber: true,
+        managerId: true,
+        manager: { select: { id: true, name: true, email: true } },
         createdAt: true,
         roles: { include: { role: true } },
         teamMemberships: { include: { team: true } },
@@ -46,6 +53,12 @@ export class ManagementService {
     roleIds?: string[];
     authProvider?: string;
     passwordLoginDisabled?: boolean;
+    jobTitle?: string;
+    department?: string;
+    location?: string;
+    phone?: string;
+    employeeNumber?: string;
+    managerId?: string;
   }) {
     const authProvider = data.authProvider || (data.password ? 'local' : 'entra');
     const passwordHash = data.password ? await bcrypt.hash(data.password, 12) : null;
@@ -56,6 +69,12 @@ export class ManagementService {
         passwordHash,
         authProvider,
         passwordLoginDisabled: data.passwordLoginDisabled ?? authProvider !== 'local',
+        jobTitle: data.jobTitle,
+        department: data.department,
+        location: data.location,
+        phone: data.phone,
+        employeeNumber: data.employeeNumber,
+        managerId: data.managerId,
         roles: data.roleIds?.length
           ? { create: data.roleIds.map((roleId) => ({ roleId })) }
           : undefined,
@@ -72,6 +91,12 @@ export class ManagementService {
       roleIds?: string[];
       authProvider?: string;
       passwordLoginDisabled?: boolean;
+      jobTitle?: string;
+      department?: string;
+      location?: string;
+      phone?: string;
+      employeeNumber?: string;
+      managerId?: string | null;
     },
     actor: SessionUser,
   ) {
@@ -88,6 +113,12 @@ export class ManagementService {
         isActive: data.isActive,
         authProvider: data.authProvider,
         passwordLoginDisabled: data.passwordLoginDisabled,
+        jobTitle: data.jobTitle,
+        department: data.department,
+        location: data.location,
+        phone: data.phone,
+        employeeNumber: data.employeeNumber,
+        managerId: data.managerId === null ? null : data.managerId,
       },
     });
     await this.audit.log({

@@ -33,6 +33,7 @@ import { CsatModule } from './csat/csat.module';
 import { WorklogModule } from './worklog/worklog.module';
 import { ChangesModule } from './changes/changes.module';
 import { ProblemsModule } from './problems/problems.module';
+import { SoftwareModule } from './software/software.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { ProblemsModule } from './problems/problems.module';
     WorklogModule,
     ChangesModule,
     ProblemsModule,
+    SoftwareModule,
   ],
 })
 export class AppModule {}

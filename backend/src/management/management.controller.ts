@@ -36,6 +36,12 @@ export class ManagementController {
     roleIds?: string[];
     authProvider?: string;
     passwordLoginDisabled?: boolean;
+    jobTitle?: string;
+    department?: string;
+    location?: string;
+    phone?: string;
+    employeeNumber?: string;
+    managerId?: string;
   }) {
     return this.management.createUser(body);
   }
@@ -50,6 +56,12 @@ export class ManagementController {
       roleIds?: string[];
       authProvider?: string;
       passwordLoginDisabled?: boolean;
+      jobTitle?: string;
+      department?: string;
+      location?: string;
+      phone?: string;
+      employeeNumber?: string;
+      managerId?: string | null;
     },
     @CurrentUser() user: SessionUser,
   ) {

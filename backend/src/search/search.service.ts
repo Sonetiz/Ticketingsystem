@@ -15,10 +15,10 @@ export class SearchService {
   async search(q: string, user: SessionUser, limit = 10) {
     const query = q.trim();
     if (!query) {
-      return { tickets: [], knowledgeBase: [], assets: [], users: [] };
+      return { tickets: [], knowledgeBase: [], assets: [], software: [], users: [], results: [] };
     }
 
-    const [tickets, knowledgeBase, assets, users] = await Promise.all([
+    const [tickets, knowledgeBase, assets, software, users] = await Promise.all([
       this.searchTickets(query, user, limit),
       this.rbac.hasPermission(user, 'kb.read')
         ? this.searchKnowledgeBase(query, limit)
@@ -26,34 +26,44 @@ export class SearchService {
       this.rbac.hasPermission(user, 'asset.read')
         ? this.searchAssets(query, limit)
         : Promise.resolve([]),
+      this.rbac.hasPermission(user, 'software.read')
+        ? this.searchSoftware(query, limit)
+        : Promise.resolve([]),
       this.canSearchUsers(user) ? this.searchUsers(query, limit) : Promise.resolve([]),
     ]);
 
     const results = [
       ...tickets.map((ticket) => ({
-        type: 'ticket',
+        type: 'ticket' as const,
         id: ticket.id,
         title: `#${ticket.number} ${ticket.title}`,
         subtitle: `${ticket.status.replace(/_/g, ' ')} - ${ticket.priority}`,
         href: `/portal/tickets/${ticket.id}`,
       })),
       ...knowledgeBase.map((article) => ({
-        type: 'kb',
+        type: 'kb' as const,
         id: article.id,
         title: article.title,
         subtitle: article.category ?? 'Knowledge base',
         href: '/portal/knowledge-base',
       })),
       ...assets.map((asset) => ({
-        type: 'asset',
+        type: 'asset' as const,
         id: asset.id,
         title: asset.name,
-        subtitle: [asset.assetType, asset.identifier].filter(Boolean).join(' - '),
-        href: '/portal/assets',
+        subtitle: [asset.assetType, asset.identifier, asset.serialNumber].filter(Boolean).join(' - '),
+        href: `/portal/assets/${asset.id}`,
+      })),
+      ...software.map((lic) => ({
+        type: 'software' as const,
+        id: lic.id,
+        title: lic.name,
+        subtitle: [lic.vendor, `${lic.seatsTotal} seats`].filter(Boolean).join(' - '),
+        href: '/manage/software',
       })),
     ].slice(0, limit);
 
-    return { results, tickets, knowledgeBase, assets, users };
+    return { results, tickets, knowledgeBase, assets, software, users };
   }
 
   private canSearchUsers(user: SessionUser): boolean {
@@ -216,10 +226,27 @@ export class SearchService {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { identifier: { contains: q, mode: 'insensitive' } },
+          { serialNumber: { contains: q, mode: 'insensitive' } },
+          { location: { contains: q, mode: 'insensitive' } },
           { assetType: { contains: q, mode: 'insensitive' } },
+          { owner: { name: { contains: q, mode: 'insensitive' } } },
         ],
       },
-      select: { id: true, name: true, assetType: true, identifier: true },
+      select: { id: true, name: true, assetType: true, identifier: true, serialNumber: true },
+      take: limit,
+    });
+  }
+
+  private async searchSoftware(q: string, limit: number) {
+    return this.prisma.softwareLicense.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { vendor: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true, vendor: true, seatsTotal: true },
       take: limit,
     });
   }

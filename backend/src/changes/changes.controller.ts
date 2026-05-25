@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ChangesService } from './changes.service';
+import { AssetsService } from '../assets/assets.service';
 import {
   CreateChangeRequestDto,
   UpdateChangeRequestDto,
   CreateFreezeWindowDto,
   UpdateFreezeWindowDto,
 } from './dto/change.dto';
+import { LinkTicketAssetDto } from '../assets/dto/asset.dto';
 import { CombinedAuthGuard, CsrfGuard } from '../auth/auth.guards';
 import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 
@@ -24,7 +26,10 @@ import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 @Controller('changes')
 @UseGuards(CombinedAuthGuard, PermissionsGuard)
 export class ChangesController {
-  constructor(private readonly changes: ChangesService) {}
+  constructor(
+    private readonly changes: ChangesService,
+    private readonly assets: AssetsService,
+  ) {}
 
   @Get('calendar')
   @RequirePermission('ticket.read')
@@ -90,5 +95,25 @@ export class ChangesController {
   @RequirePermission('ticket.update')
   remove(@Param('id') id: string) {
     return this.changes.removeChange(id);
+  }
+
+  @Get(':id/assets')
+  @RequirePermission('ticket.read')
+  getAssets(@Param('id') id: string) {
+    return this.assets.getChangeAssets(id);
+  }
+
+  @Post(':id/assets')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  linkAsset(@Param('id') id: string, @Body() dto: LinkTicketAssetDto) {
+    return this.assets.linkChangeAsset(id, dto.assetId, dto.relation);
+  }
+
+  @Delete(':id/assets/:assetId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  unlinkAsset(@Param('id') id: string, @Param('assetId') assetId: string) {
+    return this.assets.unlinkChangeAsset(id, assetId);
   }
 }

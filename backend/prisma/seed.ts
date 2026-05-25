@@ -35,6 +35,12 @@ async function main() {
     'kb.create',
     'asset.read',
     'asset.create',
+    'asset.update',
+    'asset.delete',
+    'asset.import',
+    'software.read',
+    'software.create',
+    'software.update',
   ];
 
   const permissions = await Promise.all(
@@ -51,10 +57,10 @@ async function main() {
   // Roles
   const roleDefs = [
     { slug: ROLES.SUPER_ADMIN, name: 'Super Admin', perms: ['*'] },
-    { slug: ROLES.SYSTEM_ADMIN, name: 'System Admin', perms: ['manage.*', 'ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'project.update', 'recurring.read', 'recurring.create', 'recurring.update', 'report.read', 'kb.read', 'kb.create', 'asset.read', 'asset.create'] },
-    { slug: ROLES.SUPPORT_ADMIN, name: 'Support Admin', perms: ['ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'recurring.read', 'recurring.create', 'report.read', 'kb.read', 'kb.create', 'asset.read'] },
-    { slug: ROLES.TEAM_LEAD, name: 'Team Lead', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'recurring.read', 'report.read', 'kb.read', 'asset.read'] },
-    { slug: ROLES.AGENT, name: 'Agent', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.email', 'project.read', 'kb.read', 'asset.read'] },
+    { slug: ROLES.SYSTEM_ADMIN, name: 'System Admin', perms: ['manage.*', 'ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'project.update', 'recurring.read', 'recurring.create', 'recurring.update', 'report.read', 'kb.read', 'kb.create', 'asset.read', 'asset.create', 'asset.update', 'asset.delete', 'asset.import', 'software.read', 'software.create', 'software.update'] },
+    { slug: ROLES.SUPPORT_ADMIN, name: 'Support Admin', perms: ['ticket.read.all', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'project.create', 'recurring.read', 'recurring.create', 'report.read', 'kb.read', 'kb.create', 'asset.read', 'asset.create', 'asset.update', 'asset.import', 'software.read', 'software.create', 'software.update'] },
+    { slug: ROLES.TEAM_LEAD, name: 'Team Lead', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.assign', 'ticket.email', 'project.read', 'recurring.read', 'report.read', 'kb.read', 'asset.read', 'asset.update', 'software.read'] },
+    { slug: ROLES.AGENT, name: 'Agent', perms: ['ticket.read', 'ticket.create', 'ticket.update', 'ticket.email', 'project.read', 'kb.read', 'asset.read', 'software.read'] },
     { slug: ROLES.AUDITOR, name: 'Auditor', perms: ['ticket.read.all', 'report.read'] },
     { slug: ROLES.REQUESTER, name: 'Requester', perms: ['ticket.create'] },
   ];
@@ -518,6 +524,170 @@ async function main() {
       content: 'If Outlook keeps prompting for password after a reset, clear cached credentials...',
       isPublic: true,
       category: 'email',
+    },
+    update: {},
+  });
+
+  // Employee fields on demo users
+  await prisma.user.update({
+    where: { id: admin.id },
+    data: {
+      jobTitle: 'IT Director',
+      department: 'IT',
+      location: 'HQ - Building A',
+      employeeNumber: 'EMP-001',
+    },
+  });
+  await prisma.user.update({
+    where: { id: agent.id },
+    data: {
+      jobTitle: 'Support Engineer',
+      department: 'IT Support',
+      location: 'HQ - Building A',
+      employeeNumber: 'EMP-002',
+      managerId: admin.id,
+    },
+  });
+  await prisma.user.update({
+    where: { id: requester.id },
+    data: {
+      jobTitle: 'Marketing Specialist',
+      department: 'Marketing',
+      location: 'HQ - Building B',
+      employeeNumber: 'EMP-003',
+    },
+  });
+
+  // Demo CMDB assets
+  const server = await prisma.asset.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000100' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000100',
+      name: 'App Server PROD-01',
+      assetType: 'server',
+      identifier: 'SRV-PROD-01',
+      serialNumber: 'SN-SERVER-001',
+      vendor: 'Dell',
+      model: 'PowerEdge R740',
+      location: 'Datacenter Rack A12',
+      status: 'in_use',
+      lifecycleStage: 'deployed',
+      ownerId: admin.id,
+      serviceId: service.id,
+    },
+    update: {},
+  });
+
+  const laptop = await prisma.asset.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000101' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000101',
+      name: 'Jane Requester Laptop',
+      assetType: 'hardware',
+      identifier: 'LAP-003',
+      serialNumber: 'SN-LAPTOP-003',
+      vendor: 'Lenovo',
+      model: 'ThinkPad T14',
+      location: 'HQ - Building B',
+      status: 'in_use',
+      lifecycleStage: 'deployed',
+      ownerId: admin.id,
+      primaryUserId: requester.id,
+    },
+    update: {},
+  });
+
+  const networkSwitch = await prisma.asset.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000102' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000102',
+      name: 'Core Switch DC-01',
+      assetType: 'network',
+      identifier: 'NET-SW-01',
+      vendor: 'Cisco',
+      model: 'Catalyst 9300',
+      location: 'Datacenter Rack A01',
+      status: 'in_use',
+      lifecycleStage: 'deployed',
+      ownerId: admin.id,
+    },
+    update: {},
+  });
+
+  const saasService = await prisma.asset.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000103' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000103',
+      name: 'Microsoft 365 Tenant',
+      assetType: 'service',
+      identifier: 'SVC-M365',
+      status: 'in_use',
+      lifecycleStage: 'deployed',
+      ownerId: admin.id,
+      serviceId: service.id,
+    },
+    update: {},
+  });
+
+  // Asset relationships
+  await prisma.assetRelationship.upsert({
+    where: {
+      parentAssetId_childAssetId_relationType: {
+        parentAssetId: server.id,
+        childAssetId: networkSwitch.id,
+        relationType: 'depends_on',
+      },
+    },
+    create: {
+      parentAssetId: server.id,
+      childAssetId: networkSwitch.id,
+      relationType: 'depends_on',
+    },
+    update: {},
+  });
+
+  await prisma.assetRelationship.upsert({
+    where: {
+      parentAssetId_childAssetId_relationType: {
+        parentAssetId: laptop.id,
+        childAssetId: saasService.id,
+        relationType: 'runs_on',
+      },
+    },
+    create: {
+      parentAssetId: laptop.id,
+      childAssetId: saasService.id,
+      relationType: 'runs_on',
+    },
+    update: {},
+  });
+
+  // Software license
+  const m365License = await prisma.softwareLicense.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000200' },
+    create: {
+      id: '00000000-0000-0000-0000-000000000200',
+      name: 'Microsoft 365 E3',
+      vendor: 'Microsoft',
+      seatsTotal: 50,
+      expiryDate: new Date('2027-01-01'),
+    },
+    update: {},
+  });
+
+  await prisma.assetSoftware.upsert({
+    where: {
+      assetId_softwareLicenseId: {
+        assetId: laptop.id,
+        softwareLicenseId: m365License.id,
+      },
+    },
+    create: {
+      assetId: laptop.id,
+      softwareLicenseId: m365License.id,
+      seatsUsed: 1,
+      version: 'E3',
+      installedAt: new Date(),
     },
     update: {},
   });

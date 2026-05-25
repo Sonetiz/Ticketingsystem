@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionAuthGuard } from '../auth/auth.guards';
@@ -34,6 +34,39 @@ export class LookupsController {
       where: { deletedAt: null, isActive: true },
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  @Get('employees')
+  @RequirePermission('ticket.read')
+  listEmployees(@Query('q') q?: string, @Query('department') department?: string) {
+    const where: {
+      deletedAt: null;
+      department?: string;
+      OR?: Array<{ name?: object; email?: object; employeeNumber?: object }>;
+    } = { deletedAt: null };
+    if (department) where.department = department;
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { employeeNumber: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    return this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+        jobTitle: true,
+        location: true,
+        employeeNumber: true,
+        isActive: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 50,
     });
   }
 }

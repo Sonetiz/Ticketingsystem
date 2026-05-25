@@ -27,10 +27,29 @@ export class ChangesService {
       where: { id },
       include: {
         ticket: { select: { id: true, number: true, title: true, status: true } },
+        linkedAssets: {
+          include: {
+            asset: {
+              select: {
+                id: true,
+                name: true,
+                assetType: true,
+                identifier: true,
+                status: true,
+                lifecycleStage: true,
+                location: true,
+                serialNumber: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!change) throw new NotFoundException('Change request not found');
-    return change;
+    return {
+      ...change,
+      assets: change.linkedAssets.map((la) => ({ ...la.asset, relation: la.relation })),
+    };
   }
 
   createChange(dto: CreateChangeRequestDto) {

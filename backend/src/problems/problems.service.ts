@@ -43,10 +43,29 @@ export class ProblemsService {
       where: { id },
       include: {
         ticket: { select: { id: true, number: true, title: true, status: true } },
+        linkedAssets: {
+          include: {
+            asset: {
+              select: {
+                id: true,
+                name: true,
+                assetType: true,
+                identifier: true,
+                status: true,
+                lifecycleStage: true,
+                location: true,
+                serialNumber: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!problem) throw new NotFoundException('Problem record not found');
-    return problem;
+    return {
+      ...problem,
+      assets: problem.linkedAssets.map((la) => ({ ...la.asset, relation: la.relation })),
+    };
   }
 
   create(dto: CreateProblemDto) {

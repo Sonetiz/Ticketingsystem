@@ -13,6 +13,7 @@ import {
   ScrollText,
   LogOut,
   SlidersHorizontal,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/api';
@@ -20,6 +21,7 @@ import { logout } from '@/lib/api';
 const navItems = [
   { href: '/manage', label: 'Overview', icon: Settings },
   { href: '/manage/users', label: 'Users', icon: Users },
+  { href: '/manage/software', label: 'Software', icon: Package },
   { href: '/manage/roles', label: 'Roles', icon: Shield },
   { href: '/manage/teams', label: 'Teams', icon: UsersRound },
   { href: '/manage/statuses', label: 'Statuses', icon: FileText },

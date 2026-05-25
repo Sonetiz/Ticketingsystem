@@ -6,6 +6,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../common/realtime/realtime.module';
 import { CsatModule } from '../csat/csat.module';
+import { AssetsModule } from '../assets/assets.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { CsatModule } from '../csat/csat.module';
     forwardRef(() => NotificationsModule),
     RealtimeModule,
     forwardRef(() => CsatModule),
+    AssetsModule,
   ],
   providers: [TicketsService],
   controllers: [TicketsController],

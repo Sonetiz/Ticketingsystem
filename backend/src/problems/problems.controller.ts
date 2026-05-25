@@ -11,7 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ProblemsService } from './problems.service';
+import { AssetsService } from '../assets/assets.service';
 import { CreateProblemDto, UpdateProblemDto } from './dto/problem.dto';
+import { LinkTicketAssetDto } from '../assets/dto/asset.dto';
 import { CombinedAuthGuard, CsrfGuard } from '../auth/auth.guards';
 import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 
@@ -19,7 +21,10 @@ import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 @Controller('problems')
 @UseGuards(CombinedAuthGuard, PermissionsGuard)
 export class ProblemsController {
-  constructor(private readonly problems: ProblemsService) {}
+  constructor(
+    private readonly problems: ProblemsService,
+    private readonly assets: AssetsService,
+  ) {}
 
   @Get('known-errors')
   @RequirePermission('ticket.read')
@@ -58,5 +63,25 @@ export class ProblemsController {
   @RequirePermission('ticket.update')
   remove(@Param('id') id: string) {
     return this.problems.remove(id);
+  }
+
+  @Get(':id/assets')
+  @RequirePermission('ticket.read')
+  getAssets(@Param('id') id: string) {
+    return this.assets.getProblemAssets(id);
+  }
+
+  @Post(':id/assets')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  linkAsset(@Param('id') id: string, @Body() dto: LinkTicketAssetDto) {
+    return this.assets.linkProblemAsset(id, dto.assetId, dto.relation);
+  }
+
+  @Delete(':id/assets/:assetId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  unlinkAsset(@Param('id') id: string, @Param('assetId') assetId: string) {
+    return this.assets.unlinkProblemAsset(id, assetId);
   }
 }

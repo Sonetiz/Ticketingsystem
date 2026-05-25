@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TicketsService } from './tickets.service';
+import { AssetsService } from '../assets/assets.service';
 import {
   CreateTicketDto,
   UpdateTicketDto,
@@ -20,6 +22,7 @@ import {
   SplitTicketDto,
   LinkTicketDto,
 } from './dto/ticket.dto';
+import { LinkTicketAssetDto } from '../assets/dto/asset.dto';
 import { SessionAuthGuard, CsrfGuard, CombinedAuthGuard } from '../auth/auth.guards';
 import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 import { CurrentUser } from '../common/decorators';
@@ -29,7 +32,10 @@ import { SessionUser } from '@ticketsystem/shared';
 @Controller('tickets')
 @UseGuards(CombinedAuthGuard, PermissionsGuard)
 export class TicketsController {
-  constructor(private readonly tickets: TicketsService) {}
+  constructor(
+    private readonly tickets: TicketsService,
+    private readonly assets: AssetsService,
+  ) {}
 
   @Get('dashboard')
   @RequirePermission('ticket.read')
@@ -166,5 +172,33 @@ export class TicketsController {
   @RequirePermission('ticket.read')
   getChildren(@Param('id') id: string, @CurrentUser() user: SessionUser) {
     return this.tickets.getChildren(id, user);
+  }
+
+  @Get(':id/assets')
+  @RequirePermission('ticket.read')
+  getAssets(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.tickets.getTicketAssets(id, user);
+  }
+
+  @Post(':id/assets')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  linkAsset(
+    @Param('id') id: string,
+    @Body() dto: LinkTicketAssetDto,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.tickets.linkTicketAsset(id, dto.assetId, dto.relation, user);
+  }
+
+  @Delete(':id/assets/:assetId')
+  @UseGuards(CsrfGuard)
+  @RequirePermission('ticket.update')
+  unlinkAsset(
+    @Param('id') id: string,
+    @Param('assetId') assetId: string,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.tickets.unlinkTicketAsset(id, assetId, user);
   }
 }

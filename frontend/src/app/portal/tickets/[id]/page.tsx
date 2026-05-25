@@ -14,6 +14,7 @@ import { MergeSplitLinkDialog } from '@/components/ticket-detail/MergeSplitLinkD
 import { ConversationPanel } from '@/components/ticket-detail/ConversationPanel';
 import { HoldPanel } from '@/components/ticket-detail/HoldPanel';
 import { useTicketRealtime } from '@/components/ticket-detail/useTicketRealtime';
+import { AssetContextPanel } from '@/components/assets/AssetContextPanel';
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +51,14 @@ export default function TicketDetailPage() {
 
       <div className="space-y-4">
         <MetaPanel ticket={ticket} currentUserId={session?.id} />
+        <AssetContextPanel
+          entityType="ticket"
+          entityId={ticket.id}
+          linkedAssets={ticket.assets ?? []}
+          queryKey={['ticket', ticket.id]}
+          linkAsset={(tid, assetId) => tickets.linkAsset(tid, assetId)}
+          unlinkAsset={(tid, assetId) => tickets.unlinkAsset(tid, assetId)}
+        />
         <WatchersPanel ticketId={ticket.id} />
         <LinkedTickets ticket={ticket} />
         <AttachmentPanel ticketId={ticket.id} attachments={ticket.attachments || []} />

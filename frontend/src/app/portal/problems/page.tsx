@@ -20,7 +20,7 @@ export default function ProblemsPage() {
     queryKey: ['problems'],
     queryFn: async () => {
       try {
-        return await api<ProblemRecord[]>('/itsm/problems');
+        return await api<ProblemRecord[]>('/problems');
       } catch {
         return null;
       }
@@ -57,7 +57,11 @@ export default function ProblemsPage() {
               <tbody>
                 {data?.map((p) => (
                   <tr key={p.id} className="border-t border-border">
-                    <td className="p-3">{p.title}</td>
+                    <td className="p-3">
+                      <Link href={`/portal/problems/${p.id}`} className="text-primary hover:underline">
+                        {p.title}
+                      </Link>
+                    </td>
                     <td className="p-3">
                       <Link href={`/portal/tickets/${p.ticket.id}`} className="text-primary font-mono">
                         #{p.ticket.number}

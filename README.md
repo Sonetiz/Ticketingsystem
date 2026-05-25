@@ -20,16 +20,35 @@ The project now includes the core support portal, management portal, requester-f
 - **Ticket detail workspace**: editable metadata, watchers, linked tickets, attachments, worklogs, canned responses, realtime refresh, assignment actions, and status updates.
 - **RBAC and authentication**: server-side permissions, session auth, API-token auth, route guards, password reset, password change, SSO/LDAP scaffolding, and management-only admin areas.
 - **Knowledge base**: searchable articles with UI creation, category, slug, public flag, and sanitised content.
-- **Asset management**: asset list plus create/edit UI with type, identifier, and JSON metadata.
+- **Asset management / CMDB**: asset registry with owner, primary user, lifecycle, warranty, and location fields; asset detail pages with dependency relationships; software license tracking with seat usage; CSV import/export; asset linking on tickets and problems; employee fields on users (department, job title, manager).
 - **Service catalog**: browse catalog items and request services, creating linked tickets.
 - **Approvals**: approval queues and approve/reject workflows, including email-link support.
 - **SLA engine**: database-backed SLA rules, business hours, holidays, response and resolution targets, on-hold pausing, breach detection, and breach notifications.
 - **Notifications**: template-backed in-app and email notification plumbing with unread count and notification page.
 - **Reports and projects**: project CRUD/detail pages, ticket progress, report charts, date-range controls, CSV export, and drill-down links.
 - **ITSM modules**: CSAT surveys, requester portal, worklogs, change records, freeze windows, problem records, known-error database, recurring tasks, and saved ticket views.
-- **Search**: global search across tickets, knowledge base, assets, and users, backed by PostgreSQL full-text search with partial ticket matching fallback.
+- **Search**: global search across tickets, knowledge base, assets, software licenses, and users, backed by PostgreSQL full-text search with partial ticket matching fallback.
 - **Integrations**: mock email and Teams adapters, webhook endpoints, inbound reply matching, and skeletons for IMAP, Microsoft Graph email, and Teams Graph/Bot Framework.
 - **Operations**: Docker Compose stack, health/readiness/liveness endpoints, Prometheus metrics, Sentry setup, pino request correlation, upload retention cleanup, CI, Dependabot, Husky, license scanning, changelog, and release notes.
+
+## CMDB and Asset Management
+
+The CMDB layer extends the existing user directory and asset registry:
+
+- **Employees**: `User` records include `jobTitle`, `department`, `location`, `phone`, `employeeNumber`, and `managerId`. Non-login staff can be represented with `passwordLoginDisabled=true`.
+- **Assets**: lifecycle fields (`status`, `lifecycleStage`), ownership (`ownerId`, `primaryUserId`), hardware metadata (vendor, model, serial, warranty, purchase), and notes.
+- **Relationships**: directed asset dependencies (`runs_on`, `depends_on`, `installed_on`, `connected_to`, `part_of`) via `AssetRelationship`.
+- **Software licenses**: `SoftwareLicense` with seat tracking; installations linked to assets through `AssetSoftware`.
+- **Work item links**: `TicketAsset`, `ChangeAsset`, and `ProblemAsset` join tables; assets appear on ticket detail, problem detail, and asset detail pages.
+- **Import/export**: CSV import with dry-run validation (`POST /api/assets/import?dryRun=true`); export from the assets list UI.
+- **Management UI**: `/manage/users` for employee fields; `/manage/software` for license administration; `/portal/assets` and `/portal/assets/[id]` for agent CMDB views.
+
+After pulling these changes, run:
+
+```bash
+docker compose exec backend prisma migrate deploy --schema /app/prisma/schema.prisma
+docker compose exec backend ts-node /app/prisma/seed.ts
+```
 
 ## Architecture
 
@@ -89,9 +108,11 @@ docker compose up -d --build
 After the database is available, apply migrations and seed data:
 
 ```bash
-docker compose exec backend npx prisma migrate deploy
-docker compose exec backend npx prisma db seed
+docker compose exec backend prisma migrate deploy --schema /app/prisma/schema.prisma
+docker compose exec backend ts-node /app/prisma/seed.ts
 ```
+
+Do not use `npx prisma` inside the runtime container. `npx` may download the latest Prisma CLI, while this project currently pins Prisma 6.
 
 Then verify the stack:
 
@@ -111,7 +132,7 @@ Before production, add a production Compose override or Kubernetes/Swarm equival
 - Removes MailHog and uses real SMTP/IMAP or Microsoft Graph configuration.
 - Does not publish Postgres or Redis to the public host interface.
 - Provides secrets through Docker/Kubernetes secrets or a secrets manager.
-- Runs `prisma migrate deploy` during release or as an init job.
+- Runs `prisma migrate deploy --schema /app/prisma/schema.prisma` during release or as an init job, using the pinned container CLI.
 - Places the frontend/backend behind TLS termination with correct `trust proxy` handling.
 - Uses shared object storage for uploads if running more than one backend replica.
 - Adds container healthchecks and non-root users.
@@ -125,8 +146,8 @@ The app should not be treated as production-ready until the open blocker items i
 | Start stack | `docker compose up -d --build` |
 | Stop stack | `docker compose down` |
 | Tail logs | `docker compose logs -f backend worker frontend` |
-| Run migrations | `docker compose exec backend npx prisma migrate deploy` |
-| Seed local data | `docker compose exec backend npx prisma db seed` |
+| Run migrations | `docker compose exec backend prisma migrate deploy --schema /app/prisma/schema.prisma` |
+| Seed local data | `docker compose exec backend ts-node /app/prisma/seed.ts` |
 | Check API health | `curl http://localhost:3001/health` |
 | Check readiness | `curl http://localhost:3001/ready` |
 | View queue depth | Prometheus `queue_depth` metric |
@@ -223,7 +244,7 @@ The frontend uses the Next.js `/api` proxy in Docker, with the backend reachable
 If creating tickets returns a 500 error immediately after seeding, reset the ticket number sequence:
 
 ```bash
-cd backend && npx prisma db execute --stdin <<'SQL'
+cd backend && pnpm exec prisma db execute --stdin <<'SQL'
 SELECT setval('"Ticket_number_seq"', (SELECT COALESCE(MAX(number), 1) FROM "Ticket"), true);
 SQL
 ```

@@ -14,7 +14,11 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:migrate": "pnpm --filter backend db:migrate",
     "db:seed": "pnpm --filter backend db:seed",
-    "db:studio": "pnpm --filter backend db:studio"
+    "db:studio": "pnpm --filter backend db:studio",
+    "smoke:install": "pnpm --filter frontend exec playwright install chromium",
+    "smoke": "BASE_URL=http://localhost:3000 pnpm --filter frontend exec playwright test",
+    "smoke:headed": "BASE_URL=http://localhost:3000 pnpm --filter frontend exec playwright test --headed",
+    "smoke:ui": "BASE_URL=http://localhost:3000 pnpm --filter frontend exec playwright test --ui"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
