@@ -68,6 +68,12 @@ export class ManagementController {
     return this.management.updateUser(id, body, user);
   }
 
+  @Delete('users/:id')
+  @UseGuards(CsrfGuard)
+  deleteUser(@Param('id') id: string, @CurrentUser() user: SessionUser) {
+    return this.management.deleteUser(id, user);
+  }
+
   @Get('roles')
   listRoles() {
     return this.management.listRoles();

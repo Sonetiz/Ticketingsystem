@@ -14,7 +14,7 @@ test.describe('Knowledge Base', () => {
 
   test.afterAll(async () => {
     if (createdArticleId) {
-      await agentApi.delete(`/kb/${createdArticleId}`).catch(() => {});
+      await agentApi.delete(`/knowledge-base/${createdArticleId}`).catch(() => {});
     }
   });
 
@@ -37,18 +37,18 @@ test.describe('Knowledge Base', () => {
     await page.goto('/portal/knowledge-base');
     await page.getByRole('button', { name: /new article/i }).click();
 
-    // Fill in the form inside the modal
+    // Fill in the form inside the modal.
+    // Textbox order in the modal: 0=Title, 1=Slug (auto-filled), 2=Category, 3=Content (textarea)
     const modal = page.locator('[role="dialog"]');
-    await modal.getByRole('textbox').nth(0).fill(title);  // Title
-    // Slug is auto-generated; may need to clear and set manually if needed
-    await modal.getByRole('textbox').nth(2).fill('Test content for smoke test article.');  // Content
+    await modal.getByRole('textbox').nth(0).fill(title);
+    await modal.getByRole('textbox').nth(3).fill('Test content for smoke test article.');
     await modal.getByRole('button', { name: /create/i }).click();
 
     // Article should appear in list
     await expect(page.getByText(title)).toBeVisible({ timeout: 10_000 });
 
     // Get the article id from the API for cleanup
-    const articles = await agentApi.request<Array<{ id: string; title: string }>>('/kb');
+    const articles = await agentApi.request<Array<{ id: string; title: string }>>('/knowledge-base');
     const created = articles.find((a) => a.title === title);
     createdArticleId = created?.id;
   });

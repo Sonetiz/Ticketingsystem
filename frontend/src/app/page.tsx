@@ -10,8 +10,14 @@ export default function HomePage() {
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
           <Link
-            href="/portal/login"
+            href="/new"
             className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition"
+          >
+            Submit a request
+          </Link>
+          <Link
+            href="/portal/login"
+            className="px-6 py-3 border border-border rounded-lg font-medium hover:bg-muted transition"
           >
             Support Portal
           </Link>

@@ -10,18 +10,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/lib/toast';
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES } from '@ticketsystem/shared';
 
-interface TicketsPageContentProps {
-  fixedView?: string;
-  title?: string;
-}
-
-export default function TicketsPageContent({ fixedView, title }: TicketsPageContentProps = {}) {
+export default function TicketsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
 
-  const view = fixedView ?? searchParams.get('view') ?? 'active';
+  const view = searchParams.get('view') ?? 'active';
   const page = Number(searchParams.get('page') || '1');
   const statusFilter = searchParams.get('status') || '';
   const priorityFilter = searchParams.get('priority') || '';
@@ -127,10 +122,35 @@ export default function TicketsPageContent({ fixedView, title }: TicketsPageCont
     all: 'All Tickets',
   };
 
+  const viewOptions = [
+    { value: 'active', label: viewTitles.active },
+    { value: 'mine', label: viewTitles.mine },
+    { value: 'team', label: viewTitles.team },
+    { value: 'unassigned', label: viewTitles.unassigned },
+    { value: 'on-hold', label: viewTitles['on-hold'] },
+    { value: 'overdue', label: viewTitles.overdue },
+    { value: 'recent', label: viewTitles.recent },
+    { value: 'all', label: viewTitles.all },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-        <h1 className="text-2xl font-bold">{title ?? viewTitles[view] ?? 'Tickets'}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Tickets</h1>
+          <select
+            value={view}
+            onChange={(e) => updateParams({ view: e.target.value || null, page: '1' })}
+            className="px-3 py-2 border border-border rounded-lg bg-background text-sm"
+            aria-label="Select ticket view"
+          >
+            {viewOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <Link
           href="/portal/tickets/new"
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm text-center"

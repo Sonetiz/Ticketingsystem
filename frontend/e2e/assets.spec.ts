@@ -63,13 +63,13 @@ test.describe('Assets', () => {
   test('asset detail shows Relationships section', async ({ page }) => {
     if (!createdAssetId) test.skip();
     await page.goto(`/portal/assets/${createdAssetId}`);
-    await expect(page.getByText(/relationships/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /relationships/i })).toBeVisible({ timeout: 10_000 });
   });
 
   test('asset detail shows Software Installations section', async ({ page }) => {
     if (!createdAssetId) test.skip();
     await page.goto(`/portal/assets/${createdAssetId}`);
-    await expect(page.getByText(/software/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /software/i })).toBeVisible({ timeout: 10_000 });
   });
 
   test('add relationship modal opens', async ({ page }) => {
@@ -103,7 +103,11 @@ test.describe('Assets', () => {
   test('CSV import modal opens and shows dry-run option', async ({ page }) => {
     await page.goto('/portal/assets');
     await page.getByRole('button', { name: /import/i }).click();
-    await expect(page.locator('[role="dialog"]')).toBeVisible();
-    await expect(page.getByText(/csv/i)).toBeVisible();
+    const modal = page.locator('[role="dialog"]');
+    await expect(modal).toBeVisible();
+    // The modal heading mentions CSV
+    await expect(modal.getByRole('heading', { name: /csv/i })).toBeVisible();
+    // Dry-run button is present
+    await expect(modal.getByRole('button', { name: /dry run/i })).toBeVisible();
   });
 });

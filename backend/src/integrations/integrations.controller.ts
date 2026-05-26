@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Query, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { EmailDispatchService } from './email/email-dispatch.service';
 import { TeamsDispatchService } from './teams/teams.connectors';
@@ -7,6 +7,7 @@ import { MockEmailConnector } from './email/email.connectors';
 import { SessionAuthGuard, ManagePortalGuard, CsrfGuard } from '../auth/auth.guards';
 import { PermissionsGuard, RequirePermission } from '../rbac/permissions.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Response } from 'express';
 
 @ApiTags('integrations')
 @Controller('integrations')
@@ -30,7 +31,26 @@ export class IntegrationsController {
   }
 
   @Post('teams/webhook')
-  async teamsWebhook(@Body() body: unknown) {
+  async teamsWebhook(
+    @Body() body: unknown,
+    @Query('validationToken') validationToken?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    if (validationToken) {
+      // Microsoft Graph subscription validation handshake
+      res?.type('text/plain');
+      return validationToken;
+    }
+
+    // Validate clientState if present (Graph change notification)
+    const setting = await this.prisma.integrationSetting.findUnique({ where: { connector: 'teams' } });
+    const cfg = (setting?.config as any) || {};
+    const expected = typeof cfg.webhookSecret === 'string' ? cfg.webhookSecret : undefined;
+    const clientState = (body as any)?.value?.[0]?.clientState as string | undefined;
+    if (expected && clientState && clientState !== expected) {
+      throw new UnauthorizedException('Invalid Teams webhook clientState');
+    }
+
     return this.teamsDispatch.handleWebhook(body);
   }
 

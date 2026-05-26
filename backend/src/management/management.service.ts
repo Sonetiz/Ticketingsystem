@@ -131,6 +131,63 @@ export class ManagementService {
     return user;
   }
 
+  async deleteUser(id: string, actor: SessionUser) {
+    if (id === actor.id) throw new BadRequestException('Cannot delete your own account');
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { roles: { include: { role: true } } },
+    });
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+
+    const isSuperAdmin = user.roles.some((r) => r.role.slug === ROLES.SUPER_ADMIN);
+    if (isSuperAdmin) {
+      const remaining = await this.prisma.userRole.count({
+        where: {
+          role: { slug: ROLES.SUPER_ADMIN },
+          user: { deletedAt: null, id: { not: id } },
+        },
+      });
+      if (remaining === 0) {
+        throw new BadRequestException('Cannot delete the last super admin');
+      }
+    }
+
+    const timestamp = Date.now();
+    const deletedEmail = `deleted-${timestamp}-${user.email}`;
+
+    await this.prisma.$transaction([
+      this.prisma.ticket.updateMany({
+        where: { assigneeId: id, deletedAt: null },
+        data: { assigneeId: null },
+      }),
+      this.prisma.ticket.updateMany({
+        where: { holdById: id, deletedAt: null },
+        data: { holdById: null },
+      }),
+      this.prisma.session.deleteMany({ where: { userId: id } }),
+      this.prisma.apiToken.deleteMany({ where: { userId: id } }),
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          email: deletedEmail,
+        },
+      }),
+    ]);
+
+    await this.audit.log({
+      actorId: actor.id,
+      entityType: 'user',
+      entityId: id,
+      action: 'deleted',
+      newValue: { deletedEmail },
+    });
+
+    return { success: true };
+  }
+
   // Roles & Permissions
   async listRoles() {
     return this.prisma.role.findMany({

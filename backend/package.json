@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",
+    "@azure/identity": "^4.13.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "@nestjs/bullmq": "^10.2.3",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
@@ -48,6 +50,7 @@
     "file-type": "^22.0.1",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
+    "ipaddr.js": "^2.4.0",
     "isomorphic-dompurify": "^3.14.0",
     "jose": "^6.2.3",
     "jsdom": "^29.1.1",

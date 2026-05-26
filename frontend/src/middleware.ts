@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = [
+  '/',
+  '/new',
   '/portal/login',
   '/portal/login/callback',
   '/portal/forgot-password',
@@ -9,7 +11,6 @@ const PUBLIC_PATHS = [
   '/manage/login',
   '/manage/login/callback',
   '/status',
-  '/requester/login',
   '/csat',
 ];
 
@@ -22,8 +23,7 @@ export function middleware(request: NextRequest) {
 
   const needsAuth =
     pathname.startsWith('/portal') ||
-    pathname.startsWith('/manage') ||
-    pathname.startsWith('/requester');
+    pathname.startsWith('/manage');
 
   if (!needsAuth || isPublicPath(pathname)) {
     return NextResponse.next();
@@ -42,5 +42,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/portal/:path*', '/manage/:path*', '/requester/:path*'],
+  matcher: ['/portal/:path*', '/manage/:path*'],
 };

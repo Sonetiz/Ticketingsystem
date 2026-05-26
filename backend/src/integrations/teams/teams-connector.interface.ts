@@ -16,7 +16,7 @@ export interface TeamsNotification {
 
 export interface TeamsConnector {
   sendNotification(notification: TeamsNotification): Promise<{ success: boolean; externalId?: string }>;
-  parseInbound(payload: unknown): TeamsInboundMessage | null;
+  parseInbound(payload: unknown): Promise<TeamsInboundMessage | null>;
 }
 
 export const TEAMS_CONNECTOR = Symbol('TEAMS_CONNECTOR');

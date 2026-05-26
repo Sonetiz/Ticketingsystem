@@ -30,11 +30,7 @@ import { logout, notifications } from '@/lib/api';
 
 const navItems = [
   { href: '/portal', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/portal/tickets?view=active', label: 'Active Queue', icon: Ticket },
-  { href: '/portal/tickets?view=mine', label: 'My Tickets', icon: Ticket },
-  { href: '/portal/unassigned-tickets', label: 'Unassigned Tickets', icon: Ticket },
-  { href: '/portal/tickets?view=on-hold', label: 'On Hold', icon: Ticket },
-  { href: '/portal/tickets?view=overdue', label: 'Overdue', icon: Ticket },
+  { href: '/portal/tickets', label: 'Tickets', icon: Ticket },
   { href: '/portal/notifications', label: 'Notifications', icon: Bell, badge: true },
   { href: '/portal/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
   { href: '/portal/assets', label: 'Assets', icon: HardDrive },

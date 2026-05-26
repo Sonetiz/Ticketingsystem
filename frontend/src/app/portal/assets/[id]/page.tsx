@@ -104,7 +104,7 @@ export default function AssetDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="Relationships" action={<button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowRelModal(true)}>Add</button>}>
+        <Panel title="Relationships" action={<button type="button" aria-label="Add relationship" className="text-xs text-primary hover:underline" onClick={() => setShowRelModal(true)}>Add</button>}>
           <RelationshipList
             parents={asset.parentRelationships ?? []}
             children={asset.childRelationships ?? []}
@@ -112,7 +112,7 @@ export default function AssetDetailPage() {
           />
         </Panel>
 
-        <Panel title="Software" action={<button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowSwModal(true)}>Install</button>}>
+        <Panel title="Software" action={<button type="button" aria-label="Install software" className="text-xs text-primary hover:underline" onClick={() => setShowSwModal(true)}>Install</button>}>
           {!asset.software?.length ? (
             <p className="text-sm text-muted-foreground">No software installed</p>
           ) : (

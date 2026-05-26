@@ -3,8 +3,10 @@
 import { usePathname } from 'next/navigation';
 import { PortalSidebar } from '@/components/portal/sidebar';
 import { TopBar } from '@/components/portal/top-bar';
-import { useSession } from '@/hooks/useSession';
+import { isRequesterOnly, useSession } from '@/hooks/useSession';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 const AUTH_FREE_PATHS = [
   '/portal/login',
@@ -24,6 +26,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
 function PortalShell({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (isRequesterOnly(user)) router.push('/new');
+  }, [isLoading, router, user]);
+
+  if (!isLoading && isRequesterOnly(user)) return null;
 
   return (
     <div className="flex min-h-screen">

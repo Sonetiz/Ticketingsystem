@@ -13,7 +13,7 @@ import { memoryStorage } from 'multer';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PublicService } from './public.service';
-import { PublicReplyDto } from './dto/public.dto';
+import { PublicCreateTicketDto, PublicReplyDto } from './dto/public.dto';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { AuthService } from '../auth/auth.service';
 import { validateUpload, multerLimits } from '../attachments/file-validation';
@@ -32,6 +32,12 @@ export class PublicController {
   @Get(':token')
   getTicket(@Param('token') token: string) {
     return this.publicService.getTicketByMagicLink(token);
+  }
+
+  @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  createTicket(@Body() dto: PublicCreateTicketDto) {
+    return this.publicService.createPublicTicket(dto);
   }
 
   @Post(':token/reply')

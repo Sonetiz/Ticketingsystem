@@ -36,7 +36,8 @@ test.describe('Authentication', () => {
     await page.locator('input[type="password"]').fill('password123');
     await page.locator('button[type="submit"]').click();
     await page.waitForURL('**/manage', { timeout: 15_000 });
-    await expect(page.getByRole('heading', { name: /settings|users|overview/i })).toBeVisible();
+    // The management overview page renders an h1 "System Management"
+    await expect(page.getByRole('heading', { level: 1, name: /system management/i })).toBeVisible();
   });
 
   test('authenticated agent is redirected when hitting /portal/login', async ({ browser }) => {

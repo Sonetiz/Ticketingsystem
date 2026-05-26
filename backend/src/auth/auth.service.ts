@@ -178,7 +178,10 @@ export class AuthService {
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return null;
-    return this.rbac.buildSessionUser(user.id);
+    const sessionUser = await this.rbac.buildSessionUser(user.id);
+    if (!sessionUser) return null;
+    if (sessionUser.roles.length === 1 && sessionUser.roles[0] === 'requester') return null;
+    return sessionUser;
   }
 
   async createSession(userId: string) {

@@ -30,8 +30,9 @@ test.describe('Manage Users & Employees', () => {
 
   test('filter input filters users', async ({ page }) => {
     await page.goto('/manage/users');
-    // Type in the filter box
-    await page.locator('input[placeholder*="filter"]').fill('admin');
+    // The placeholder is "Filter by name, email, department..." (capital F),
+    // so use the case-insensitive attribute selector flag.
+    await page.locator('input[placeholder*="filter" i]').fill('admin');
     // Table should still show admin row
     await expect(page.getByText('admin@ticketsystem.local')).toBeVisible({ timeout: 5_000 });
   });
@@ -76,7 +77,9 @@ test.describe('Manage Users & Employees', () => {
 
     await modal.getByRole('button', { name: /save/i }).click();
 
-    await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 });
+    // The name appears in the table; use exact match so we don't collide with the
+    // email column (`${name}@smoke.test`) which also contains the name as a substring.
+    await expect(page.getByRole('cell', { name, exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Record id for cleanup
     const users = await adminApi.request<Array<{ id: string; name: string }>>('/manage/users');

@@ -35,6 +35,7 @@ export default function ManageUsersPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
+  const [deleteUser, setDeleteUser] = useState<UserRow | null>(null);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [filter, setFilter] = useState('');
   const [nonLoginOnly, setNonLoginOnly] = useState(false);
@@ -59,6 +60,18 @@ export default function ManageUsersPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: object }) => api(`/manage/users/${id}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'X-CSRF-Token': getCsrfToken() || '' } }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['manage-users'] }); setEditUser(null); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      api(`/manage/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': getCsrfToken() || '' },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manage-users'] });
+      setDeleteUser(null);
+    },
   });
 
   const filtered = users?.filter((u) => {
@@ -114,7 +127,12 @@ export default function ManageUsersPage() {
                     <td className="p-3">{u.manager?.name || '—'}</td>
                     <td className="p-3">{u.roles.map((r) => r.role.name).join(', ')}</td>
                     <td className="p-3">{u.isActive ? 'Active' : 'Inactive'}</td>
-                    <td className="p-3"><button className="text-primary text-sm hover:underline" onClick={() => setEditUser(u)}>Edit</button></td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-3">
+                        <button className="text-primary text-sm hover:underline" onClick={() => setEditUser(u)}>Edit</button>
+                        <button className="text-red-500 text-sm hover:underline" onClick={() => setDeleteUser(u)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -127,7 +145,59 @@ export default function ManageUsersPage() {
       {editUser && (
         <UserFormModal key={editUser.id} open={!!editUser} onClose={() => setEditUser(null)} title="Edit user" roles={roles || []} users={users || []} initial={editUser} onSubmit={(data) => updateMutation.mutate({ id: editUser.id, body: data })} loading={updateMutation.isPending} isEdit />
       )}
+      {deleteUser && (
+        <DeleteUserModal
+          key={`delete-${deleteUser.id}`}
+          open={!!deleteUser}
+          onClose={() => setDeleteUser(null)}
+          user={deleteUser}
+          onConfirm={() => deleteMutation.mutate(deleteUser.id)}
+          loading={deleteMutation.isPending}
+        />
+      )}
     </div>
+  );
+}
+
+function DeleteUserModal({
+  open,
+  onClose,
+  user,
+  onConfirm,
+  loading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  user: UserRow;
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  const [confirmEmail, setConfirmEmail] = useState('');
+  const canDelete = confirmEmail.trim().toLowerCase() === user.email.toLowerCase();
+
+  return (
+    <Modal open={open} onClose={onClose} title="Delete user">
+      <div className="space-y-4">
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <p className="font-medium">This will soft-delete the user.</p>
+          <p className="text-muted-foreground mt-1">
+            Their sessions and API tokens will be revoked. Any assigned tickets will be unassigned.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <FieldLabel>Type the user’s email to confirm</FieldLabel>
+          <TextInput value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} placeholder={user.email} />
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <BtnSecondary type="button" onClick={onClose}>Cancel</BtnSecondary>
+          <BtnPrimary type="button" disabled={!canDelete || loading} onClick={onConfirm}>
+            {loading ? 'Deleting...' : 'Delete user'}
+          </BtnPrimary>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

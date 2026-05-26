@@ -37,7 +37,15 @@ export const MESSAGE_KINDS = [
   'system',
 ] as const;
 
-export const TICKET_SOURCES = ['web', 'email', 'teams', 'api', 'recurring', 'admin'] as const;
+export const TICKET_SOURCES = [
+  'web',
+  'web_public',
+  'email',
+  'teams',
+  'api',
+  'recurring',
+  'admin',
+] as const;
 
 export const AUDIT_SOURCES = ['web', 'email', 'teams', 'system_job', 'api'] as const;
 

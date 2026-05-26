@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login, setCsrfToken, getAuthConfig, getMicrosoftLoginUrl } from '@/lib/api';
+import { login, setCsrfToken, getAuthConfig, getMicrosoftLoginUrl, logout } from '@/lib/api';
+import { isAdminUser } from '@/hooks/useSession';
 
 function ManageLoginForm() {
   const router = useRouter();
@@ -20,6 +21,12 @@ function ManageLoginForm() {
     try {
       const data = await login(email, password);
       setCsrfToken(data.csrfToken);
+      const user = data.user as { roles?: string[]; permissions?: string[] } | undefined;
+      if (!isAdminUser(user)) {
+        await logout().catch(() => {});
+        setError('Management portal access denied');
+        return;
+      }
       router.push('/manage');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

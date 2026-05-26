@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
@@ -34,6 +34,7 @@ import { WorklogModule } from './worklog/worklog.module';
 import { ChangesModule } from './changes/changes.module';
 import { ProblemsModule } from './problems/problems.module';
 import { SoftwareModule } from './software/software.module';
+import { AccessAllowlistMiddleware } from './common/access-allowlist.middleware';
 
 @Module({
   imports: [
@@ -85,5 +86,10 @@ import { SoftwareModule } from './software/software.module';
     ProblemsModule,
     SoftwareModule,
   ],
+  providers: [AccessAllowlistMiddleware],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AccessAllowlistMiddleware).forRoutes('*');
+  }
+}

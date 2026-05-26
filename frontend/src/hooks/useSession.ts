@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { getMe, logout } from '@/lib/api';
 
-export function useSession() {
+export function useSession(options?: { redirectTo?: string }) {
   const router = useRouter();
   const query = useQuery({
     queryKey: ['session'],
@@ -17,10 +17,25 @@ export function useSession() {
   useEffect(() => {
     if (query.isError) {
       logout().finally(() => {
-        router.push('/portal/login');
+        router.push(options?.redirectTo || '/portal/login');
       });
     }
-  }, [query.isError, router]);
+  }, [options?.redirectTo, query.isError, router]);
 
   return query;
+}
+
+export function isAdminUser(user: { roles?: string[]; permissions?: string[] } | null | undefined) {
+  const roles = user?.roles || [];
+  const permissions = user?.permissions || [];
+  return (
+    permissions.includes('manage.*') ||
+    roles.includes('super_admin') ||
+    roles.includes('system_admin')
+  );
+}
+
+export function isRequesterOnly(user: { roles?: string[] } | null | undefined) {
+  const roles = user?.roles || [];
+  return roles.length === 1 && roles[0] === 'requester';
 }

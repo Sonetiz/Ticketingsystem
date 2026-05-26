@@ -55,6 +55,7 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
+      type="text"
       {...props}
       className={cn('w-full px-3 py-2 border border-border rounded-lg bg-background text-sm', props.className)}
     />

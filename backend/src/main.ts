@@ -13,6 +13,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
 
   const isProduction = process.env.NODE_ENV === 'production';
   const swaggerEnabled = !isProduction || process.env.SWAGGER_ENABLED === 'true';

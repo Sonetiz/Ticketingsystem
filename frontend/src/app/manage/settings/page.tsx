@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, getCsrfToken } from '@/lib/api';
 import { Modal, FieldLabel, TextInput, BtnPrimary, BtnSecondary } from '@/components/ui/modal';
@@ -23,6 +23,20 @@ export default function ManageSettingsPage() {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['manage-settings'] });
+
+  const accessAllowlistSetting = settings?.find((s) => s.key === 'access.allowlist');
+  const accessAllowlistValue = (accessAllowlistSetting?.value as { enabled?: boolean; ips?: string[]; hosts?: string[] } | undefined) ?? {};
+  const [allowlistEnabled, setAllowlistEnabled] = useState<boolean>(false);
+  const [allowlistIps, setAllowlistIps] = useState<string>('');
+  const [allowlistHosts, setAllowlistHosts] = useState<string>('');
+  const [allowlistDirty, setAllowlistDirty] = useState(false);
+
+  useEffect(() => {
+    if (allowlistDirty) return;
+    setAllowlistEnabled(accessAllowlistValue.enabled === true);
+    setAllowlistIps((accessAllowlistValue.ips || []).join('\n'));
+    setAllowlistHosts((accessAllowlistValue.hosts || []).join('\n'));
+  }, [accessAllowlistValue.enabled, accessAllowlistValue.hosts, accessAllowlistValue.ips, allowlistDirty]);
 
   const saveMutation = useMutation({
     mutationFn: ({ key, value }: { key: string; value: object }) =>
@@ -47,6 +61,75 @@ export default function ManageSettingsPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">System Settings</h1>
         <BtnPrimary onClick={() => setShowCreate(true)}>New setting</BtnPrimary>
+      </div>
+      <div className="bg-card rounded-xl border p-4 space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Access allowlist</h2>
+          <p className="text-sm text-muted-foreground">
+            When enabled, the backend will only accept requests from allowed IPs/CIDRs or allowed Hosts.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={allowlistEnabled}
+            onChange={(e) => {
+              setAllowlistDirty(true);
+              setAllowlistEnabled(e.target.checked);
+            }}
+          />
+          Enable allowlist enforcement
+        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <FieldLabel>Allowed IPs / CIDRs (one per line)</FieldLabel>
+            <textarea
+              value={allowlistIps}
+              onChange={(e) => {
+                setAllowlistDirty(true);
+                setAllowlistIps(e.target.value);
+              }}
+              rows={6}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background font-mono text-xs"
+              placeholder={"203.0.113.10\n203.0.113.0/24"}
+            />
+          </div>
+          <div className="space-y-1">
+            <FieldLabel>Allowed Hosts (one per line)</FieldLabel>
+            <textarea
+              value={allowlistHosts}
+              onChange={(e) => {
+                setAllowlistDirty(true);
+                setAllowlistHosts(e.target.value);
+              }}
+              rows={6}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background font-mono text-xs"
+              placeholder={"helpdesk.example.com\ninternal.tickets.example.com"}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <BtnPrimary
+            onClick={() => {
+              const ips = allowlistIps
+                .split('\n')
+                .map((l) => l.trim())
+                .filter(Boolean);
+              const hosts = allowlistHosts
+                .split('\n')
+                .map((l) => l.trim())
+                .filter(Boolean);
+              saveMutation.mutate({
+                key: 'access.allowlist',
+                value: { enabled: allowlistEnabled, ips, hosts },
+              });
+              setAllowlistDirty(false);
+            }}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save allowlist'}
+          </BtnPrimary>
+        </div>
       </div>
       {isLoading ? <p>Loading...</p> : (
         <div className="bg-card rounded-xl border overflow-hidden">

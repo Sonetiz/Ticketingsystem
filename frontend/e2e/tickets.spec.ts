@@ -22,12 +22,14 @@ test.describe('Tickets', () => {
     await page.goto('/portal');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByText('Open Tickets')).toBeVisible();
-    await expect(page.getByText('Unassigned')).toBeVisible();
+    // Use exact match so we don't collide with the sidebar's "Unassigned Tickets" link.
+    await expect(page.getByText('Unassigned', { exact: true })).toBeVisible();
   });
 
   test('ticket list loads', async ({ page }) => {
     await page.goto('/portal/tickets?view=active');
-    await expect(page.getByRole('heading', { name: /tickets/i })).toBeVisible();
+    // /portal/tickets?view=active renders the heading "Active Queue".
+    await expect(page.getByRole('heading', { name: /tickets|queue/i }).first()).toBeVisible();
   });
 
   test('unassigned tickets page loads', async ({ page }) => {
@@ -38,25 +40,29 @@ test.describe('Tickets', () => {
   test('create new ticket form renders required fields', async ({ page }) => {
     await page.goto('/portal/tickets/new');
     await expect(page.getByRole('heading', { name: 'Create Ticket' })).toBeVisible();
-    await expect(page.locator('input[placeholder*="itle"], input[name="title"]').or(page.getByLabel('Title'))).toBeVisible();
+    // The title field is the first text input inside the form.
+    await expect(page.locator('form input[type="text"]').first()).toBeVisible();
+    // A description textarea is also rendered.
+    await expect(page.locator('form textarea').first()).toBeVisible();
   });
 
   test('creates a ticket and navigates to detail', async ({ page }) => {
     const title = uid('ticket');
     await page.goto('/portal/tickets/new');
 
-    // Fill title (the first text input on the form)
+    // Fill title (first text input) and description (required textarea).
     await page.locator('form input[type="text"]').first().fill(title);
+    await page.locator('form textarea').first().fill(`Smoke test description for ${title}`);
 
     await page.locator('form button[type="submit"]').click();
 
-    // Should navigate to detail page
-    await page.waitForURL(/\/portal\/tickets\/[^/]+$/, { timeout: 15_000 });
+    // Should navigate to detail page; exclude `/new` so we know an id was assigned.
+    await page.waitForURL(/\/portal\/tickets\/(?!new$)[^/]+$/, { timeout: 15_000 });
 
     const url = page.url();
     createdTicketId = url.split('/').pop();
 
-    await expect(page.getByText(title)).toBeVisible();
+    await expect(page.getByText(title).first()).toBeVisible();
   });
 
   test('ticket detail shows title and status badge', async ({ page }) => {
